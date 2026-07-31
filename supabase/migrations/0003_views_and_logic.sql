@@ -533,7 +533,12 @@ begin
 end;
 $$;
 
+-- No browser session may call this. `service_role` must: it is what the seed
+-- script and the admin-users Edge Function authenticate as, and EXECUTE reaches
+-- service_role only through the PUBLIC grant being revoked here, so it has to be
+-- granted back explicitly.
 revoke execute on function public.create_employee_profile(uuid, text, text, jsonb) from public, anon, authenticated;
+grant execute on function public.create_employee_profile(uuid, text, text, jsonb) to service_role;
 
 -- Deactivation is a soft delete across two tables, and you cannot lock yourself out.
 create or replace function public.deactivate_employee(p_id integer)

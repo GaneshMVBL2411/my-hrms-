@@ -1,30 +1,87 @@
 /**
- * Seeds Whhohh Path LLP's demo people and the sample data hanging off them.
+ * Seeds Whhohh Path LLP's people and the sample data hanging off them.
  * Replaces the retired backend/seed.py.
  *
  * Reference rows (roles, departments, leave types, …) come from migration 0004 —
- * run the migrations first. This script needs the service key because creating a
- * login goes through the Auth admin API, so it runs from a terminal, never from
- * the deployed app. Idempotent: safe to re-run.
+ * apply the migrations first. This needs the service key because creating a login
+ * goes through the Auth admin API, so it runs from a terminal, never from the
+ * deployed app. Idempotent: safe to re-run.
  *
  *   SUPABASE_URL=https://xxxx.supabase.co \
  *   SUPABASE_SERVICE_KEY=eyJ... \
  *   node supabase/seed.mjs
+ *
+ * Deliberately dependency-free — it talks to the REST and Auth endpoints over
+ * plain fetch. There is no node_modules at the repo root, and requiring an
+ * install here just to create seven rows is one more thing to get wrong.
+ * Needs Node 18+ for global fetch.
  */
 
-import { createClient } from "@supabase/supabase-js"
-
-const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/+$/, "")
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error("Set SUPABASE_URL and SUPABASE_SERVICE_KEY before running this script.")
+  console.error(`Set SUPABASE_URL and SUPABASE_SERVICE_KEY before running this script, e.g.
+
+  SUPABASE_URL=https://xxxx.supabase.co \\
+  SUPABASE_SERVICE_KEY=<service_role key from Settings -> API> \\
+  node supabase/seed.mjs
+`)
   process.exit(1)
 }
 
-const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+const HEADERS = {
+  apikey: SUPABASE_SERVICE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+  "Content-Type": "application/json",
+}
+
+async function request(path, { method = "GET", body, prefer } = {}) {
+  const response = await fetch(`${SUPABASE_URL}${path}`, {
+    method,
+    headers: prefer ? { ...HEADERS, Prefer: prefer } : HEADERS,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  const text = await response.text()
+  let payload = null
+  try {
+    payload = text ? JSON.parse(text) : null
+  } catch {
+    payload = text
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload?.message ?? payload?.msg ?? payload?.error_description ?? payload?.hint ?? text
+    throw new Error(`${method} ${path} -> ${response.status}: ${detail || response.statusText}`)
+  }
+
+  return payload
+}
+
+const rest = {
+  select: (table, query = "") => request(`/rest/v1/${table}?${query}`),
+  insert: (table, rows) =>
+    request(`/rest/v1/${table}`, { method: "POST", body: rows, prefer: "return=representation" }),
+  /** Skips rows that already exist rather than overwriting them. */
+  insertIgnoringDuplicates: (table, rows, onConflict) =>
+    request(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+      method: "POST",
+      body: rows,
+      prefer: "resolution=ignore-duplicates,return=minimal",
+    }),
+  rpc: (fn, args) => request(`/rest/v1/rpc/${fn}`, { method: "POST", body: args }),
+}
+
+const auth = {
+  createUser: (email, password) =>
+    request("/auth/v1/admin/users", {
+      method: "POST",
+      body: { email, password, email_confirm: true },
+    }),
+  deleteUser: (id) => request(`/auth/v1/admin/users/${id}`, { method: "DELETE" }),
+}
 
 // `lastName` is blank for anyone who goes by a single name; `full_name` trims,
 // so nothing renders with a trailing space. `gender` is left unset rather than
@@ -76,69 +133,61 @@ const ROLE_BASIC_PAY = {
   employee: 50000,
 }
 
-function check(label, { error }) {
-  if (error) throw new Error(`${label}: ${error.message}`)
-}
-
 function daysFromNow(days) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 async function lookup(table, column) {
-  const { data, error } = await db.from(table).select(`id, ${column}`)
-  if (error) throw new Error(`Reading ${table}: ${error.message}`)
-  return Object.fromEntries(data.map((row) => [row[column], row.id]))
+  const rows = await rest.select(table, `select=id,${column}`)
+  return Object.fromEntries(rows.map((row) => [row[column], row.id]))
 }
 
 async function seedEmployees(departments, designations) {
-  const { data: existing } = await db.from("users").select("email")
-  const known = new Set((existing ?? []).map((u) => u.email.toLowerCase()))
+  const existing = await rest.select("users", "select=email")
+  const known = new Set(existing.map((user) => user.email.toLowerCase()))
 
   for (const person of EMPLOYEES) {
     if (known.has(person.email.toLowerCase())) {
-      console.log(`Skipping existing user ${person.email}`)
+      console.log(`  · ${person.email} already exists, skipping`)
       continue
     }
 
-    const { data: created, error: authError } = await db.auth.admin.createUser({
-      email: person.email,
-      password: person.password,
-      email_confirm: true,
-    })
-    if (authError) throw new Error(`Creating login for ${person.email}: ${authError.message}`)
+    const account = await auth.createUser(person.email, person.password)
 
-    const { error: profileError } = await db.rpc("create_employee_profile", {
-      p_auth_id: created.user.id,
-      p_email: person.email,
-      p_role: person.role,
-      p_employee: {
-        first_name: person.firstName,
-        last_name: person.lastName,
-        gender: person.gender ?? null,
-        department_id: departments[person.department],
-        designation_id: designations[person.designation],
-        joining_date: person.joiningDate,
-        experience_years: 2,
-        skills: ["Communication", "Teamwork"],
-        status: "active",
-      },
-    })
-    if (profileError) {
-      await db.auth.admin.deleteUser(created.user.id)
-      throw new Error(`Creating profile for ${person.email}: ${profileError.message}`)
+    try {
+      await rest.rpc("create_employee_profile", {
+        p_auth_id: account.id,
+        p_email: person.email,
+        p_role: person.role,
+        p_employee: {
+          first_name: person.firstName,
+          last_name: person.lastName,
+          gender: person.gender ?? null,
+          department_id: departments[person.department],
+          designation_id: designations[person.designation],
+          joining_date: person.joiningDate,
+          experience_years: 2,
+          skills: ["Communication", "Teamwork"],
+          status: "active",
+        },
+      })
+    } catch (error) {
+      // A login without a profile cannot sign in and blocks the address from
+      // ever being reused, so roll it back rather than leave it orphaned.
+      await auth.deleteUser(account.id).catch(() => {})
+      throw new Error(`Creating the profile for ${person.email} failed: ${error.message}`)
     }
 
-    console.log(`Created ${person.email} (${person.role})`)
+    console.log(`  · created ${person.email} (${person.role})`)
   }
 }
 
 async function seedLeaveBalances(employees) {
-  const { data: leaveTypes, error } = await db.from("leave_types").select("id, default_days_per_year")
-  if (error) throw new Error(`Reading leave_types: ${error.message}`)
-
+  const leaveTypes = await rest.select("leave_types", "select=id,default_days_per_year")
   const year = new Date().getFullYear()
+
   const rows = employees.flatMap((employee) =>
     leaveTypes.map((type) => ({
       employee_id: employee.id,
@@ -149,14 +198,8 @@ async function seedLeaveBalances(employees) {
     }))
   )
 
-  check(
-    "Seeding leave balances",
-    await db.from("leave_balances").upsert(rows, {
-      onConflict: "employee_id,leave_type_id,year",
-      ignoreDuplicates: true,
-    })
-  )
-  console.log("Seeded leave balances.")
+  await rest.insertIgnoringDuplicates("leave_balances", rows, "employee_id,leave_type_id,year")
+  console.log(`  · ${rows.length} leave balances`)
 }
 
 async function seedSalaryStructures(employees) {
@@ -169,181 +212,180 @@ async function seedSalaryStructures(employees) {
       special_allowance: basic * 0.15,
       pf_percent: 12,
       esi_percent: 0.75,
-      effective_from: employee.joining_date ?? new Date().toISOString().slice(0, 10),
+      effective_from: employee.joiningDate ?? new Date().toISOString().slice(0, 10),
     }
   })
 
-  check(
-    "Seeding salary structures",
-    await db.from("salary_structures").upsert(rows, { onConflict: "employee_id", ignoreDuplicates: true })
-  )
-  console.log("Seeded salary structures.")
+  await rest.insertIgnoringDuplicates("salary_structures", rows, "employee_id")
+  console.log(`  · ${rows.length} salary structures`)
 }
 
 async function seedSampleProject(employees) {
-  const { data: existing } = await db.from("projects").select("id").eq("name", "HRMS Platform").maybeSingle()
-  if (existing) return
+  const existing = await rest.select("projects", "select=id&name=eq.HRMS%20Platform")
+  if (existing.length > 0) {
+    console.log("  · sample project already exists, skipping")
+    return
+  }
 
-  const byFirstName = Object.fromEntries(employees.map((e) => [e.first_name, e]))
+  const byFirstName = Object.fromEntries(employees.map((e) => [e.firstName, e]))
   const founder = employees.find((e) => e.role === "founder")
-  const pm = employees.find((e) => e.role === "project_manager")
-  if (!founder || !pm) return
+  const manager = employees.find((e) => e.role === "project_manager")
+  if (!founder || !manager) return
 
-  const { data: project, error } = await db
-    .from("projects")
-    .insert({
-      name: "HRMS Platform",
-      description: "Internal HR management system for Whhohh Path LLP.",
-      tech_stack: ["React", "Supabase", "PostgreSQL"],
-      priority: "high",
-      status: "active",
-      deadline: daysFromNow(60),
-      progress: 35,
-      created_by: founder.user_id,
-    })
-    .select("id")
-    .single()
-  if (error) throw new Error(`Creating sample project: ${error.message}`)
+  const [project] = await rest.insert("projects", {
+    name: "HRMS Platform",
+    description: "Internal HR management system for Whhohh Path LLP.",
+    tech_stack: ["React", "Supabase", "PostgreSQL"],
+    priority: "high",
+    status: "active",
+    deadline: daysFromNow(60),
+    progress: 35,
+    created_by: founder.userId,
+  })
 
   const members = ["Ganesh", "Tarak", "Pavan"]
     .map((name) => byFirstName[name])
     .filter(Boolean)
-    .map((employee) => ({ project_id: project.id, employee_id: employee.id, role_in_project: "Developer" }))
-  check("Adding project members", await db.from("project_members").insert(members))
+    .map((employee) => ({
+      project_id: project.id,
+      employee_id: employee.id,
+      role_in_project: "Developer",
+    }))
+  if (members.length > 0) await rest.insert("project_members", members)
 
-  const { data: tasks, error: taskError } = await db
-    .from("tasks")
-    .insert([
-      {
-        project_id: project.id,
-        title: "Design database schema",
-        description: "Model core HR entities and relationships.",
-        assigned_to: byFirstName.Tarak?.id ?? null,
-        priority: "high",
-        due_date: daysFromNow(5),
-        status: "completed",
-        created_by: pm.user_id,
-      },
-      {
-        project_id: project.id,
-        title: "Build employee management UI",
-        description: "List, profile, and edit screens for employees.",
-        assigned_to: byFirstName.Pavan?.id ?? null,
-        priority: "medium",
-        due_date: daysFromNow(10),
-        status: "in_progress",
-        created_by: pm.user_id,
-      },
-    ])
-    .select("id, title")
-  if (taskError) throw new Error(`Creating sample tasks: ${taskError.message}`)
+  const tasks = await rest.insert("tasks", [
+    {
+      project_id: project.id,
+      title: "Design database schema",
+      description: "Model core HR entities and relationships.",
+      assigned_to: byFirstName.Tarak?.id ?? null,
+      priority: "high",
+      due_date: daysFromNow(5),
+      status: "completed",
+      created_by: manager.userId,
+    },
+    {
+      project_id: project.id,
+      title: "Build employee management UI",
+      description: "List, profile, and edit screens for employees.",
+      assigned_to: byFirstName.Pavan?.id ?? null,
+      priority: "medium",
+      due_date: daysFromNow(10),
+      status: "in_progress",
+      created_by: manager.userId,
+    },
+  ])
 
-  const uiTask = tasks.find((t) => t.title === "Build employee management UI")
-  check(
-    "Adding checklist items",
-    await db.from("task_checklist_items").insert([
-      { task_id: uiTask.id, label: "List page", is_done: true },
-      { task_id: uiTask.id, label: "Profile page", is_done: true },
-      { task_id: uiTask.id, label: "Edit form", is_done: false },
-    ])
-  )
+  const uiTask = tasks.find((task) => task.title === "Build employee management UI")
+  await rest.insert("task_checklist_items", [
+    { task_id: uiTask.id, label: "List page", is_done: true },
+    { task_id: uiTask.id, label: "Profile page", is_done: true },
+    { task_id: uiTask.id, label: "Edit form", is_done: false },
+  ])
 
-  console.log("Created sample project 'HRMS Platform' with tasks.")
+  console.log("  · sample project 'HRMS Platform' with 2 tasks")
 }
 
 async function seedContent(employees) {
   const founder = employees.find((e) => e.role === "founder")
   const hr = employees.find((e) => e.role === "hr_admin")
 
-  const { data: existingPolicy } = await db.from("policies").select("id").eq("title", "Leave Policy").maybeSingle()
-  if (founder && !existingPolicy) {
-    check(
-      "Seeding policies",
-      await db.from("policies").insert([
-        {
-          title: "Leave Policy",
-          content:
-            "All employees are entitled to Casual, Sick, Paid, Work From Home and Comp Off leave as per " +
-            "their leave balance. Leave requests should be submitted in advance via the Leaves module and " +
-            "require HR approval.",
-          updated_by: founder.user_id,
-        },
-        {
-          title: "Code of Conduct",
-          content:
-            "Employees are expected to act with integrity, respect colleagues, and safeguard company and " +
-            "client data. Violations should be reported to HR.",
-          updated_by: founder.user_id,
-        },
-      ])
-    )
-    console.log("Seeded sample policies.")
+  const policies = await rest.select("policies", "select=id&title=eq.Leave%20Policy")
+  if (founder && policies.length === 0) {
+    await rest.insert("policies", [
+      {
+        title: "Leave Policy",
+        content:
+          "All employees are entitled to Casual, Sick, Paid, Work From Home and Comp Off leave as per " +
+          "their leave balance. Leave requests should be submitted in advance via the Leaves module and " +
+          "require HR approval.",
+        updated_by: founder.userId,
+      },
+      {
+        title: "Code of Conduct",
+        content:
+          "Employees are expected to act with integrity, respect colleagues, and safeguard company and " +
+          "client data. Violations should be reported to HR.",
+        updated_by: founder.userId,
+      },
+    ])
+    console.log("  · 2 policies")
   }
 
-  const { data: existingAnnouncement } = await db
-    .from("announcements")
-    .select("id")
-    .eq("title", "Welcome to the new HRMS")
-    .maybeSingle()
-
-  if (hr && !existingAnnouncement) {
-    check(
-      "Seeding announcements",
-      await db.from("announcements").insert([
-        {
-          title: "Welcome to the new HRMS",
-          body:
-            "We've moved to a new in-house HR platform. Explore Attendance, Leaves, Projects, Tasks and " +
-            "more from the sidebar.",
-          category: "news",
-          pinned: true,
-          created_by: hr.user_id,
-        },
-        {
-          title: "Office closed for Independence Day",
-          body: "The office will remain closed on August 15th for Independence Day.",
-          category: "holiday",
-          pinned: false,
-          created_by: hr.user_id,
-        },
-      ])
-    )
-    console.log("Seeded sample announcements.")
+  const announcements = await rest.select("announcements", "select=id&title=eq.Welcome%20to%20the%20new%20HRMS")
+  if (hr && announcements.length === 0) {
+    await rest.insert("announcements", [
+      {
+        title: "Welcome to the new HRMS",
+        body:
+          "We've moved to a new in-house HR platform. Explore Attendance, Leaves, Projects, Tasks and " +
+          "more from the sidebar.",
+        category: "news",
+        pinned: true,
+        created_by: hr.userId,
+      },
+      {
+        title: "Office closed for Independence Day",
+        body: "The office will remain closed on August 15th for Independence Day.",
+        category: "holiday",
+        pinned: false,
+        created_by: hr.userId,
+      },
+    ])
+    console.log("  · 2 announcements")
   }
 }
 
 async function main() {
-  const departments = await lookup("departments", "name")
-  const designations = await lookup("designations", "title")
+  console.log(`Seeding ${SUPABASE_URL}\n`)
+
+  const [departments, designations] = await Promise.all([
+    lookup("departments", "name"),
+    lookup("designations", "title"),
+  ])
 
   if (Object.keys(departments).length === 0) {
-    throw new Error("No departments found — apply supabase/migrations/*.sql before seeding.")
+    throw new Error(
+      "No departments found. Apply supabase/migrations/*.sql in order before seeding — " +
+        "the migrations create the tables and reference data, this script only adds people."
+    )
   }
 
+  console.log("People:")
   await seedEmployees(departments, designations)
 
-  const { data: rows, error } = await db
-    .from("employees")
-    .select("id, first_name, joining_date, user_id, users!inner(role_id, roles!inner(name))")
-  if (error) throw new Error(`Reading employees: ${error.message}`)
+  const rows = await rest.select(
+    "employees",
+    "select=id,first_name,joining_date,user_id,users!inner(roles!inner(name))"
+  )
+  const employees = rows.map((row) => {
+    const user = Array.isArray(row.users) ? row.users[0] : row.users
+    const role = Array.isArray(user?.roles) ? user.roles[0] : user?.roles
+    return {
+      id: row.id,
+      firstName: row.first_name,
+      joiningDate: row.joining_date,
+      userId: row.user_id,
+      role: role?.name,
+    }
+  })
 
-  const employees = rows.map((row) => ({
-    id: row.id,
-    first_name: row.first_name,
-    joining_date: row.joining_date,
-    user_id: row.user_id,
-    role: row.users.roles.name,
-  }))
-
+  console.log("\nReference data:")
   await seedLeaveBalances(employees)
   await seedSalaryStructures(employees)
+
+  console.log("\nSample content:")
   await seedSampleProject(employees)
   await seedContent(employees)
 
-  console.log("Seed complete.")
+  console.log("\nSign in with any of these:\n")
+  for (const person of EMPLOYEES) {
+    console.log(`  ${person.role.padEnd(16)} ${person.email.padEnd(32)} ${person.password}`)
+  }
+  console.log("\nChange these passwords before anyone real uses the system.")
 }
 
 main().catch((error) => {
-  console.error(error.message)
+  console.error(`\nSeeding failed: ${error.message}`)
   process.exit(1)
 })
