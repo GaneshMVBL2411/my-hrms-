@@ -93,10 +93,14 @@ create table employees (
   employee_code varchar(20) not null,
 
   first_name varchar(100) not null,
-  last_name varchar(100) not null,
+  -- Empty for the mononymous: plenty of people here go by a single name, and
+  -- they should not have to invent a surname to exist in the system.
+  last_name varchar(100) not null default '',
   -- Stored (not computed on read) so it can be indexed and sorted/searched by
   -- PostgREST the same way the backend's `first_name || ' ' || last_name` was.
-  full_name varchar(201) generated always as (first_name || ' ' || last_name) stored,
+  -- trim() keeps a missing surname from leaving a trailing space on every
+  -- payslip, offer letter and directory row.
+  full_name varchar(201) generated always as (trim(first_name || ' ' || last_name)) stored,
   phone varchar(20),
   address varchar(500),
   dob date,

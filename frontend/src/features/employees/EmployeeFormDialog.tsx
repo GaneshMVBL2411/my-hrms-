@@ -50,7 +50,9 @@ const optionalPattern = (pattern: RegExp, message: string) =>
 const baseSchema = {
   email: z.string().email("Enter a valid email"),
   firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
+  // Optional: not everyone has a surname, and requiring one would leave those
+  // employees uneditable once they exist.
+  lastName: z.string(),
   phone: z.string().optional(),
   address: z.string().optional(),
   dob: z.string().optional(),
@@ -181,7 +183,7 @@ export function EmployeeFormDialog({
               {errors.firstName && <p className="text-xs text-destructive">{errors.firstName.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>Last name</Label>
+              <Label>Last name (optional)</Label>
               <Input {...register("lastName")} />
               {errors.lastName && <p className="text-xs text-destructive">{errors.lastName.message}</p>}
             </div>

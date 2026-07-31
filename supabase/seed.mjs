@@ -26,6 +26,9 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
+// `lastName` is blank for anyone who goes by a single name; `full_name` trims,
+// so nothing renders with a trailing space. `gender` is left unset rather than
+// guessed from a name — HR can fill it in from the employee form.
 const EMPLOYEES = [
   {
     email: "ravi.shanker@whhohhpath.com", password: "Founder@123",
@@ -35,39 +38,33 @@ const EMPLOYEES = [
   },
   {
     email: "hr@whhohhpath.com", password: "HrAdmin@123",
-    firstName: "Ananya", lastName: "Rao", role: "hr_admin",
+    firstName: "Bhavya", lastName: "Sri", role: "hr_admin",
     department: "Operations", designation: "HR Executive",
-    joiningDate: "2022-03-15", gender: "female",
+    joiningDate: "2022-03-15",
   },
   {
-    email: "karthik.pm@whhohhpath.com", password: "Manager@123",
-    firstName: "Karthik", lastName: "Iyer", role: "project_manager",
+    email: "ganesh.pm@whhohhpath.com", password: "Manager@123",
+    firstName: "Ganesh", lastName: "", role: "project_manager",
     department: "Engineering", designation: "Software Engineer",
-    joiningDate: "2022-06-01", gender: "male",
+    joiningDate: "2022-06-01",
   },
   {
-    email: "priya.lead@whhohhpath.com", password: "TeamLead@123",
-    firstName: "Priya", lastName: "Nair", role: "team_lead",
+    email: "tarak.lead@whhohhpath.com", password: "TeamLead@123",
+    firstName: "Tarak", lastName: "", role: "team_lead",
     department: "Engineering", designation: "Software Engineer",
-    joiningDate: "2022-09-12", gender: "female",
+    joiningDate: "2022-09-12",
   },
   {
-    email: "arjun.dev@whhohhpath.com", password: "Employee@123",
-    firstName: "Arjun", lastName: "Mehta", role: "employee",
+    email: "pavan.dev@whhohhpath.com", password: "Employee@123",
+    firstName: "Pavan", lastName: "", role: "employee",
     department: "Engineering", designation: "Software Engineer",
-    joiningDate: "2023-02-20", gender: "male",
+    joiningDate: "2023-02-20",
   },
   {
-    email: "sneha.design@whhohhpath.com", password: "Employee@123",
-    firstName: "Sneha", lastName: "Kapoor", role: "employee",
-    department: "Design", designation: "Product Designer",
-    joiningDate: "2023-05-08", gender: "female",
-  },
-  {
-    email: "vikram.ai@whhohhpath.com", password: "Employee@123",
-    firstName: "Vikram", lastName: "Reddy", role: "employee",
+    email: "avinash.ai@whhohhpath.com", password: "Employee@123",
+    firstName: "Avinash", lastName: "", role: "employee",
     department: "AI/ML", designation: "AI Engineer",
-    joiningDate: "2023-11-03", gender: "male",
+    joiningDate: "2023-11-03",
   },
 ]
 
@@ -119,7 +116,7 @@ async function seedEmployees(departments, designations) {
       p_employee: {
         first_name: person.firstName,
         last_name: person.lastName,
-        gender: person.gender,
+        gender: person.gender ?? null,
         department_id: departments[person.department],
         designation_id: designations[person.designation],
         joining_date: person.joiningDate,
@@ -208,7 +205,7 @@ async function seedSampleProject(employees) {
     .single()
   if (error) throw new Error(`Creating sample project: ${error.message}`)
 
-  const members = ["Karthik", "Priya", "Arjun"]
+  const members = ["Ganesh", "Tarak", "Pavan"]
     .map((name) => byFirstName[name])
     .filter(Boolean)
     .map((employee) => ({ project_id: project.id, employee_id: employee.id, role_in_project: "Developer" }))
@@ -221,7 +218,7 @@ async function seedSampleProject(employees) {
         project_id: project.id,
         title: "Design database schema",
         description: "Model core HR entities and relationships.",
-        assigned_to: byFirstName.Priya?.id ?? null,
+        assigned_to: byFirstName.Tarak?.id ?? null,
         priority: "high",
         due_date: daysFromNow(5),
         status: "completed",
@@ -231,7 +228,7 @@ async function seedSampleProject(employees) {
         project_id: project.id,
         title: "Build employee management UI",
         description: "List, profile, and edit screens for employees.",
-        assigned_to: byFirstName.Arjun?.id ?? null,
+        assigned_to: byFirstName.Pavan?.id ?? null,
         priority: "medium",
         due_date: daysFromNow(10),
         status: "in_progress",

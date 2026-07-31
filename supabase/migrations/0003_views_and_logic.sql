@@ -506,7 +506,7 @@ begin
     v_user_id,
     public.next_employee_code(),
     p_employee->>'first_name',
-    p_employee->>'last_name',
+    coalesce(p_employee->>'last_name', ''),
     p_employee->>'phone',
     p_employee->>'address',
     nullif(p_employee->>'dob', '')::date,
