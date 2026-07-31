@@ -1,0 +1,130 @@
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import axios from "axios"
+import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { applyLeave, listTypes } from "@/features/leaves/api"
+
+const schema = z
+  .object({
+    leaveTypeId: z.string().min(1, "Select a leave type"),
+    startDate: z.string().min(1, "Required"),
+    endDate: z.string().min(1, "Required"),
+    reason: z.string().optional(),
+  })
+  .refine((data) => data.endDate >= data.startDate, {
+    message: "End date must be on or after the start date",
+    path: ["endDate"],
+  })
+
+type FormValues = z.infer<typeof schema>
+
+export function ApplyLeaveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const queryClient = useQueryClient()
+  const { data: types = [] } = useQuery({ queryKey: ["leaves", "types"], queryFn: listTypes })
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+
+  const mutation = useMutation({
+    mutationFn: (values: FormValues) =>
+      applyLeave({
+        leaveTypeId: Number(values.leaveTypeId),
+        startDate: values.startDate,
+        endDate: values.endDate,
+        reason: values.reason || undefined,
+      }),
+    onSuccess: () => {
+      toast.success("Leave request submitted")
+      queryClient.invalidateQueries({ queryKey: ["leaves"] })
+      reset()
+      onOpenChange(false)
+    },
+    onError: (error) => {
+      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
+      toast.error(detail ?? "Could not submit leave request")
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md rounded-md">
+        <DialogHeader>
+          <DialogTitle>Apply for Leave</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit((values) => mutation.mutate(values))} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Leave type</Label>
+            <Controller
+              control={control}
+              name="leaveTypeId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select leave type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {types.map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.leaveTypeId && <p className="text-xs text-destructive">{errors.leaveTypeId.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Start date</Label>
+              <Input type="date" {...register("startDate")} />
+              {errors.startDate && <p className="text-xs text-destructive">{errors.startDate.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>End date</Label>
+              <Input type="date" {...register("endDate")} />
+              {errors.endDate && <p className="text-xs text-destructive">{errors.endDate.message}</p>}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Reason (optional)</Label>
+            <Textarea rows={3} {...register("reason")} />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" className="rounded-md" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="rounded-md">
+              {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Submit
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

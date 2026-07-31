@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.25rem;
+
+  --background: #f8fafc;
+  --foreground: #0f172a;
+
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* Official brand palette — matches the letterhead/payslip/offer-letter templates. */
+  --primary: #0f4c34;
+  --primary-foreground: #f8fafc;
+
+  --secondary: #12241a;
+  --secondary-foreground: #f8fafc;
+
+  /* shadcn convention: neutral hover/highlight tint for ghost buttons, menu items, etc. */
+  --accent: #eaf0ec;
+  --accent-foreground: #12241a;
+
+  /* brand accent — the logo/letterhead's gold, for highlights, badges, chart series */
+  --brand-accent: #c0912a;
+  --brand-accent-foreground: #12241a;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+
+  --success: #22c55e;
+  --success-foreground: #f8fafc;
+
+  --warning: #f59e0b;
+  --warning-foreground: #1e293b;
+
+  --danger: #ef4444;
+  --destructive: #ef4444;
+  --destructive-foreground: #f8fafc;
+
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #0f4c34;
+}
+
+.dark {
+  --background: #0b1220;
+  --foreground: #f1f5f9;
+
+  --card: #111a2c;
+  --card-foreground: #f1f5f9;
+
+  --popover: #111a2c;
+  --popover-foreground: #f1f5f9;
+
+  --primary: #1f7a54;
+  --primary-foreground: #0b1220;
+
+  --secondary: #16281c;
+  --secondary-foreground: #f1f5f9;
+
+  --accent: #1b2e22;
+  --accent-foreground: #f1f5f9;
+
+  --brand-accent: #d9ac55;
+  --brand-accent-foreground: #0b1220;
+
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+
+  --success: #22c55e;
+  --success-foreground: #0b1220;
+
+  --warning: #f59e0b;
+  --warning-foreground: #0b1220;
+
+  --danger: #ef4444;
+  --destructive: #ef4444;
+  --destructive-foreground: #f1f5f9;
+
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #1f7a54;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 0.0625rem);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 0.0625rem);
+  --radius-xl: calc(var(--radius) + 0.125rem);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-foreground: var(--brand-accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    margin: 0;
+  }
+}
+
+@layer utilities {
+  /* Classic flat look: a hairline border instead of a soft drop-shadow. */
+  .shadow-soft {
+    box-shadow: 0 0 0 1px var(--border);
+  }
+}
+
+/* Printing a payslip: the app shell lives in #root, the dialog is a Radix portal
+   appended to <body> outside it — hiding #root leaves only the payslip on the page. */
+@media print {
+  #root {
+    display: none !important;
+  }
+}
