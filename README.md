@@ -74,6 +74,30 @@ Import the repository; `vercel.json` at the root already points the build at
 Both are baked into the bundle and are meant to be public — the anon key only
 grants what the policies allow. Never add the `service_role` key.
 
+## Troubleshooting
+
+**400 on `/auth/v1/token?grant_type=password`.** Supabase Auth refused the
+sign-in itself, before the app saw anything. Almost always it means no login
+exists for that email — the migrations create tables, not accounts, so until
+`seed.mjs` runs there is nobody to sign in as. Check **Authentication → Users**;
+if it's empty, run the seed. If you seeded before the team was renamed, the old
+addresses are what exist — re-run the seed to add the new ones (it skips emails
+it already created).
+
+A login and a profile are two separate things. A 400 means the *login* is
+missing; "This account is not active" means the login worked but there is no
+active `public.users` row behind it. [supabase/link-auth-user.sql](supabase/link-auth-user.sql)
+repairs the second case and includes a query that shows which half each account
+is missing.
+
+**Blank page after deploying.** Vite inlines env vars at build time, so adding
+them to Vercel does nothing until you redeploy. If the variables are missing
+entirely you'll get a setup page naming them rather than a blank screen.
+
+**Deep links 404 on refresh.** Vercel's Root Directory must stay at the
+repository root so the rewrites in `vercel.json` apply; setting it to `frontend`
+ignores that file.
+
 ## How authorisation works
 
 There is no middleware to check a role, so the checks live in the database:

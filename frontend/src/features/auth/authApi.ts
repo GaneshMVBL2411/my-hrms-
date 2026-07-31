@@ -18,7 +18,15 @@ export async function signIn(email: string, password: string, rememberMe: boolea
   setRememberMe(rememberMe)
 
   const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw new ApiError("Invalid email or password")
+  if (error) {
+    // A wrong password stays deliberately vague, but everything else — an
+    // unconfirmed email, a disabled email provider, rate limiting — is a setup
+    // problem, and hiding it behind "invalid password" makes it undiagnosable.
+    // Match on the code, not the status: `email_not_confirmed` is also a 400.
+    const isBadCredentials =
+      error.code === "invalid_credentials" || /invalid login credentials/i.test(error.message)
+    throw new ApiError(isBadCredentials ? "Invalid email or password" : error.message)
+  }
 
   const user = await fetchCurrentUser()
   if (!user) {
