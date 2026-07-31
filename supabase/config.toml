@@ -3,8 +3,8 @@
 project_id = ""
 
 [db]
-# Match your Supabase project's Postgres major version (Settings -> Database).
-major_version = 15
+# Matches the live project (PostgreSQL 17.6).
+major_version = 17
 
 [functions.admin-users]
 # Creating a login is HR-only; the function reads the caller's JWT to check that,
