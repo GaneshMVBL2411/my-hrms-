@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StatCard } from "@/components/shared/StatCard"
 import { useAuth } from "@/features/auth/AuthContext"
+import { canManageEmployees } from "@/features/auth/permissions"
 import { listEmployees } from "@/features/employees/api"
 import { getSummary } from "@/features/attendance/api"
 import { listTasks } from "@/features/tasks/api"
@@ -36,6 +37,9 @@ function OrganizationDashboard() {
   const { user } = useAuth()
   const { resolvedTheme } = useTheme()
   const navigate = useNavigate()
+  // Project managers and team leads share this dashboard but cannot hire, so
+  // the shortcut is HR-only — same rule the employee list and profile use.
+  const canManage = canManageEmployees(user?.role)
   const primaryHex = resolvedTheme === "dark" ? "#1f7a54" : "#0f4c34"
   const gridHex = resolvedTheme === "dark" ? "#1e293b" : "#e2e8f0"
   const tickHex = resolvedTheme === "dark" ? "#94a3b8" : "#64748b"
@@ -94,10 +98,12 @@ function OrganizationDashboard() {
           <p className="text-sm text-muted-foreground">Welcome back,</p>
           <h1 className="text-xl font-semibold text-foreground">{user?.fullName ?? "there"}</h1>
         </div>
-        <Button className="rounded-md" onClick={() => navigate("/employees")}>
-          <UserPlus className="mr-2 size-4" />
-          Add Employee
-        </Button>
+        {canManage && (
+          <Button className="rounded-md" onClick={() => navigate("/employees")}>
+            <UserPlus className="mr-2 size-4" />
+            Add Employee
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
