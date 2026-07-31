@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import axios from "axios"
 import { Plus, Search, UserPlus, Undo2, Trash2, Laptop } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +15,7 @@ import { AssetFormDialog } from "@/features/assets/AssetFormDialog"
 import { AssignAssetDialog } from "@/features/assets/AssignAssetDialog"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { Asset, AssetStatus } from "@/features/assets/types"
+import { errorMessage } from "@/lib/errors"
 
 const PAGE_SIZE = 10
 
@@ -55,8 +55,7 @@ export function AssetListPage() {
       invalidate()
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not return asset")
+      toast.error(errorMessage(error, "Could not return asset"))
     },
   })
 

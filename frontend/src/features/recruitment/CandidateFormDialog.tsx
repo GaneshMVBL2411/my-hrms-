@@ -2,7 +2,6 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -17,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createCandidate } from "@/features/recruitment/api"
+import { errorMessage } from "@/lib/errors"
 
 const schema = z.object({
   fullName: z.string().min(1, "Name is required"),
@@ -54,8 +54,7 @@ export function CandidateFormDialog({ open, onOpenChange }: { open: boolean; onO
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Something went wrong")
+      toast.error(errorMessage(error, "Something went wrong"))
     },
   })
 

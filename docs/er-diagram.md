@@ -5,14 +5,17 @@ departments, designations, audit logs). Each later phase (Attendance, Leave,
 Payroll, Projects, Tasks, Recruitment, Assets, Documents, Announcements) adds
 its own tables + migration and extends this diagram.
 
+Credentials live in Supabase Auth's `auth.users`; `public.users` holds the app's
+own identity (integer id, role, active flag) and points at it via `auth_id`.
+
 ```mermaid
 erDiagram
     ROLES ||--o{ USERS : "has"
     ROLES ||--o{ ROLE_PERMISSIONS : "grants"
     PERMISSIONS ||--o{ ROLE_PERMISSIONS : "granted via"
 
+    AUTH_USERS ||--o| USERS : "authenticates"
     USERS ||--o| EMPLOYEES : "is"
-    USERS ||--o{ REFRESH_TOKENS : "owns"
     USERS ||--o{ AUDIT_LOGS : "performs"
 
     DEPARTMENTS ||--o{ EMPLOYEES : "groups"
@@ -33,22 +36,19 @@ erDiagram
         int role_id FK
         int permission_id FK
     }
+    AUTH_USERS {
+        uuid id PK "managed by Supabase Auth"
+        string email
+        string encrypted_password
+    }
     USERS {
         int id PK
+        uuid auth_id FK "-> auth.users.id"
         string email
-        string hashed_password
         int role_id FK
         bool is_active
         datetime created_at
         datetime updated_at
-    }
-    REFRESH_TOKENS {
-        int id PK
-        int user_id FK
-        string token_hash
-        datetime expires_at
-        bool revoked
-        datetime created_at
     }
     DEPARTMENTS {
         int id PK

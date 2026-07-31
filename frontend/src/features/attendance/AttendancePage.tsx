@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import axios from "axios"
 import { format } from "date-fns"
 import { LogIn, LogOut, Clock } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { checkIn, checkOut, getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { AttendanceStatus } from "@/features/attendance/types"
+import { errorMessage } from "@/lib/errors"
 
 const statusTone: Record<AttendanceStatus, "success" | "warning" | "danger" | "secondary"> = {
   present: "success",
@@ -47,8 +47,7 @@ export function AttendancePage() {
       queryClient.invalidateQueries({ queryKey: ["attendance"] })
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not check in")
+      toast.error(errorMessage(error, "Could not check in"))
     },
   })
 
@@ -59,8 +58,7 @@ export function AttendancePage() {
       queryClient.invalidateQueries({ queryKey: ["attendance"] })
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not check out")
+      toast.error(errorMessage(error, "Could not check out"))
     },
   })
 

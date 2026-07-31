@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import axios from "axios"
 import { Plus, Check, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +12,7 @@ import { getBalance, listRequests, approveLeave, rejectLeave, cancelLeave } from
 import { ApplyLeaveDialog } from "@/features/leaves/ApplyLeaveDialog"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { LeaveStatus } from "@/features/leaves/types"
+import { errorMessage } from "@/lib/errors"
 
 const statusTone: Record<LeaveStatus, "success" | "warning" | "danger"> = {
   approved: "success",
@@ -69,8 +69,7 @@ export function LeavesPage() {
       invalidate()
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not cancel request")
+      toast.error(errorMessage(error, "Could not cancel request"))
     },
   })
 

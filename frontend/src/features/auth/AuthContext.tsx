@@ -1,9 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import axios from "axios"
 import * as authApi from "@/features/auth/authApi"
-import { setSession, clearSession, getStoredRefreshToken, onUserRefreshed } from "@/features/auth/session"
-import { API_BASE_URL } from "@/lib/config"
-import type { AuthUser, LoginResponse } from "@/features/auth/types"
+import { supabase } from "@/lib/supabase"
+import type { AuthUser } from "@/features/auth/types"
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -19,48 +17,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const bootstrap = async () => {
-      const refreshToken = getStoredRefreshToken()
-      if (!refreshToken) {
-        setIsLoading(false)
+    let active = true
+
+    // Supabase restores the stored session and refreshes it on its own schedule.
+    // This fires on that initial restore and on every refresh, so the profile —
+    // role, employeeId, photo, all of which HR can change — is re-read each time
+    // rather than being frozen at sign-in.
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        if (active) {
+          setUser(null)
+          setIsLoading(false)
+        }
         return
       }
 
-      try {
-        const { data } = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/refresh`, {
-          refreshToken,
+      void authApi
+        .fetchCurrentUser()
+        .then((profile) => {
+          if (active) setUser(profile)
         })
-        setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken })
-        setUser(data.user)
-      } catch {
-        clearSession()
-      } finally {
-        setIsLoading(false)
-      }
-    }
+        .catch(() => {
+          if (active) setUser(null)
+        })
+        .finally(() => {
+          if (active) setIsLoading(false)
+        })
+    })
 
-    void bootstrap()
+    return () => {
+      active = false
+      data.subscription.unsubscribe()
+    }
   }, [])
 
-  useEffect(() => onUserRefreshed(setUser), [])
-
   const signIn = async (email: string, password: string, rememberMe: boolean) => {
-    const data = await authApi.login(email, password)
-    setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, rememberMe })
-    setUser(data.user)
+    setUser(await authApi.signIn(email, password, rememberMe))
   }
 
   const signOut = async () => {
-    const refreshToken = getStoredRefreshToken()
-    clearSession()
     setUser(null)
-    if (refreshToken) {
-      try {
-        await authApi.logout(refreshToken)
-      } catch {
-        // best-effort server-side revoke; client state is already cleared
-      }
-    }
+    await authApi.signOut()
   }
 
   return (

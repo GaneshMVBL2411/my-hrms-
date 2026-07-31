@@ -4,13 +4,13 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Navigate, useLocation, useNavigate } from "react-router-dom"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import axios from "axios"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/features/auth/AuthContext"
+import { errorMessage } from "@/lib/errors"
 import logoMark from "@/assets/logo-mark.png"
 
 const loginSchema = z.object({
@@ -48,18 +48,7 @@ export function LoginPage() {
       await signIn(values.email, values.password, values.rememberMe)
       navigate("/dashboard", { replace: true })
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 401) {
-          toast.error("Invalid email or password")
-        } else if (error.response) {
-          const detail = (error.response.data as { detail?: string })?.detail
-          toast.error(detail ?? `Sign-in failed (server returned ${error.response.status})`)
-        } else {
-          toast.error("Could not reach the server. Check your connection and try again.")
-        }
-      } else {
-        toast.error("Something went wrong. Please try again.")
-      }
+      toast.error(errorMessage(error, "Something went wrong. Please try again."))
     }
   }
 

@@ -2,7 +2,6 @@ import { useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import axios from "axios"
 import { ArrowLeft, Pencil, UserPlus, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +16,7 @@ import { ProjectFormDialog } from "@/features/projects/ProjectFormDialog"
 import { TaskListPage } from "@/features/tasks/TaskListPage"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { Priority, ProjectStatus } from "@/features/projects/types"
+import { errorMessage } from "@/lib/errors"
 
 const statusTone: Record<ProjectStatus, "success" | "warning" | "secondary" | "default"> = {
   active: "success",
@@ -64,8 +64,7 @@ export function ProjectDetailPage() {
       invalidate()
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not add member")
+      toast.error(errorMessage(error, "Could not add member"))
     },
   })
 

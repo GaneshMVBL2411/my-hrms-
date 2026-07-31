@@ -2,7 +2,6 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -18,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { applyLeave, listTypes } from "@/features/leaves/api"
+import { errorMessage } from "@/lib/errors"
 
 const schema = z
   .object({
@@ -60,8 +60,7 @@ export function ApplyLeaveDialog({ open, onOpenChange }: { open: boolean; onOpen
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not submit leave request")
+      toast.error(errorMessage(error, "Could not submit leave request"))
     },
   })
 

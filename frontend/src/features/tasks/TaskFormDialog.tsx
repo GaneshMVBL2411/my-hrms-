@@ -3,7 +3,6 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -23,6 +22,7 @@ import { createTask, updateTask } from "@/features/tasks/api"
 import { listProjects } from "@/features/projects/api"
 import { listEmployees } from "@/features/employees/api"
 import type { Task } from "@/features/tasks/types"
+import { errorMessage } from "@/lib/errors"
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -102,8 +102,7 @@ export function TaskFormDialog({
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Something went wrong")
+      toast.error(errorMessage(error, "Something went wrong"))
     },
   })
 

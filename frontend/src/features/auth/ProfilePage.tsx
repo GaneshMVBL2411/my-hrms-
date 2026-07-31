@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { apiClient } from "@/lib/apiClient"
+import { changePassword } from "@/features/auth/authApi"
+import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/features/auth/AuthContext"
 
 const schema = z
@@ -36,16 +37,13 @@ export function ProfilePage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) =>
-      apiClient.post("/auth/change-password", {
-        current_password: values.currentPassword,
-        new_password: values.newPassword,
-      }),
+    mutationFn: (values: FormValues) => changePassword(values.currentPassword, values.newPassword),
     onSuccess: () => {
       toast.success("Password updated")
       reset()
     },
-    onError: () => toast.error("Could not update password. Check your current password."),
+    onError: (error) =>
+      toast.error(errorMessage(error, "Could not update password. Check your current password.")),
   })
 
   const initials = (user?.fullName ?? "?").slice(0, 2).toUpperCase()

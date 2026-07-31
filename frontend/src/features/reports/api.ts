@@ -1,4 +1,5 @@
-import { apiClient } from "@/lib/apiClient"
+import { supabase } from "@/lib/supabase"
+import { unwrap } from "@/lib/errors"
 import type {
   AttendanceReportRow,
   EmployeeReportRow,
@@ -7,27 +8,27 @@ import type {
   TaskReportRow,
 } from "@/features/reports/types"
 
+// Every report aggregates across the whole company, so each one is a SECURITY
+// DEFINER function that re-checks for an HR role before it reads anything.
+
 export async function getAttendanceReport(year: number, month: number): Promise<AttendanceReportRow[]> {
-  const { data } = await apiClient.get("/reports/attendance", { params: { year, month } })
-  return data
+  return unwrap<AttendanceReportRow[]>(
+    await supabase.rpc("report_attendance", { p_year: year, p_month: month })
+  )
 }
 
 export async function getLeaveReport(year: number): Promise<LeaveReportRow[]> {
-  const { data } = await apiClient.get("/reports/leaves", { params: { year } })
-  return data
+  return unwrap<LeaveReportRow[]>(await supabase.rpc("report_leaves", { p_year: year }))
 }
 
 export async function getTaskReport(): Promise<TaskReportRow[]> {
-  const { data } = await apiClient.get("/reports/tasks")
-  return data
+  return unwrap<TaskReportRow[]>(await supabase.rpc("report_tasks"))
 }
 
 export async function getProjectReport(): Promise<ProjectReportRow[]> {
-  const { data } = await apiClient.get("/reports/projects")
-  return data
+  return unwrap<ProjectReportRow[]>(await supabase.rpc("report_projects"))
 }
 
 export async function getEmployeeReport(): Promise<EmployeeReportRow[]> {
-  const { data } = await apiClient.get("/reports/employees")
-  return data
+  return unwrap<EmployeeReportRow[]>(await supabase.rpc("report_employees"))
 }

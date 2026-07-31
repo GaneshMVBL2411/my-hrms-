@@ -3,7 +3,6 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -20,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createProject, updateProject } from "@/features/projects/api"
 import type { Project } from "@/features/projects/types"
+import { errorMessage } from "@/lib/errors"
 
 const schema = z.object({
   name: z.string().min(1, "Project name is required"),
@@ -90,8 +90,7 @@ export function ProjectFormDialog({
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Something went wrong")
+      toast.error(errorMessage(error, "Something went wrong"))
     },
   })
 

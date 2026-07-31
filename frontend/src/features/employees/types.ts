@@ -44,6 +44,7 @@ export interface Employee extends EmployeeSummary {
   bankIfsc: string | null
   bankName: string | null
   createdAt: string
+  role: string
 }
 
 export interface EmployeeListParams {

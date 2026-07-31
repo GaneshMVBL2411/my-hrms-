@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import axios from "axios"
 import {
   format,
   startOfMonth,
@@ -18,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { checkIn, checkOut, getMyAttendance } from "@/features/attendance/api"
 import type { AttendanceStatus } from "@/features/attendance/types"
+import { errorMessage } from "@/lib/errors"
 
 const statusColor: Record<AttendanceStatus, string> = {
   present: "bg-success",
@@ -31,7 +31,7 @@ function formatTime(value: string | null) {
 }
 
 function formatErrorDetail(error: unknown, fallback: string) {
-  return axios.isAxiosError(error) ? ((error.response?.data as { detail?: string })?.detail ?? fallback) : fallback
+  return errorMessage(error, fallback)
 }
 
 export function AttendanceWidget() {

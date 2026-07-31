@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Plus, Search, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,7 @@ import { EmployeeFormDialog } from "@/features/employees/EmployeeFormDialog"
 import { useAuth } from "@/features/auth/AuthContext"
 import { canManageEmployees } from "@/features/auth/permissions"
 import type { EmployeeStatus } from "@/features/employees/types"
+import { errorMessage } from "@/lib/errors"
 
 const PAGE_SIZE = 10
 
@@ -68,8 +68,7 @@ export function EmployeeListPage() {
       queryClient.invalidateQueries({ queryKey: ["employees"] })
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not remove employee")
+      toast.error(errorMessage(error, "Could not remove employee"))
     },
   })
 

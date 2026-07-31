@@ -3,7 +3,6 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -25,6 +24,7 @@ import {
   updateEmployee,
 } from "@/features/employees/api"
 import type { Employee } from "@/features/employees/types"
+import { errorMessage } from "@/lib/errors"
 
 const roles = [
   { value: "founder", label: "Founder" },
@@ -112,7 +112,7 @@ export function EmployeeFormDialog({
       designationId: employee?.designationId ? String(employee.designationId) : undefined,
       joiningDate: employee?.joiningDate ?? "",
       status: employee?.status ?? "active",
-      role: "employee",
+      role: employee?.role ?? "employee",
       password: "",
       panNumber: employee?.panNumber ?? "",
       aadhaarNumber: employee?.aadhaarNumber ?? "",
@@ -152,8 +152,7 @@ export function EmployeeFormDialog({
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Something went wrong. Please check the form and try again.")
+      toast.error(errorMessage(error, "Something went wrong. Please check the form and try again."))
     },
   })
 

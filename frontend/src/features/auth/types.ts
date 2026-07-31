@@ -8,10 +8,3 @@ export interface AuthUser {
   employeeId: number | null
   photoUrl: string | null
 }
-
-export interface LoginResponse {
-  accessToken: string
-  refreshToken: string
-  tokenType: string
-  user: AuthUser
-}

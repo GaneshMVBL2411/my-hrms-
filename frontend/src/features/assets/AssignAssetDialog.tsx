@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -16,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { assignAsset } from "@/features/assets/api"
 import { listEmployees } from "@/features/employees/api"
 import type { Asset } from "@/features/assets/types"
+import { errorMessage } from "@/lib/errors"
 
 export function AssignAssetDialog({
   asset,
@@ -44,8 +44,7 @@ export function AssignAssetDialog({
       onOpenChange(false)
     },
     onError: (error) => {
-      const detail = axios.isAxiosError(error) ? (error.response?.data as { detail?: string })?.detail : undefined
-      toast.error(detail ?? "Could not assign asset")
+      toast.error(errorMessage(error, "Could not assign asset"))
     },
   })
 
