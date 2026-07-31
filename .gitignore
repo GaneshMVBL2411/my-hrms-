@@ -12,3 +12,6 @@ supabase/.temp/
 # OS / editor
 .DS_Store
 *.log
+
+# Data exports — contain PAN, Aadhaar, bank details and password hashes
+backup/
