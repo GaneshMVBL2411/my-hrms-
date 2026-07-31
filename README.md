@@ -47,10 +47,15 @@ SUPABASE_SERVICE_KEY=<service_role key> \
 node supabase/seed.mjs
 ```
 
-Creates the seven Whhohh Path employees, their leave balances and salary
-structures, plus a sample project, policies and announcements. Sign in as
-`ravi.shanker@whhohhpath.com` / `Founder@123`. **Change these passwords before
-anyone real uses the system.**
+Creates the six Whhohh Path accounts, their leave balances and salary
+structures, plus a sample project, policies and announcements. It prints the
+credentials it created when it finishes.
+
+Those passwords are hard-coded in `seed.mjs`, which means they are published in
+this repository — treat them as bootstrap-only. **Change every one of them from
+Profile → Change password before the system holds anything real.** The seed
+skips any email that already has a login, so re-running it will not undo a
+password you have changed.
 
 ### 4. Run the frontend
 
