@@ -1,0 +1,116 @@
+# ---------------------------------------------------------------------------
+# The checks that were previously only run when someone remembered.
+#
+# Every job here reproduces something this project has actually been bitten by:
+# an allow-list that drifted until four screens 404'd in production, credentials
+# committed to the repository, and a dependency tree nobody had ever audited.
+#
+# Deliberately no database. The security tests are written to run from source
+# alone precisely so they can gate a pull request without secrets; the checks
+# that need Neon (`npm run db:rpc-drift`) are run by hand against a live
+# database, and adding DATABASE_URL here would put the production connection
+# string in CI for no gain.
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server — typecheck and security tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # phase0 asserts no seed credentials are committed and that .gitignore
+      # still covers .env/.bak/dist. phase1 covers JWT claims and rate limiting,
+      # phase2 the /query write restrictions, rpc-drift the allow-list.
+      #
+      # JWT_SECRET is a throwaway for the token tests; auth.ts refuses to load
+      # without one. It signs nothing that leaves this runner.
+      - name: Security regression tests
+        run: npm test
+        env:
+          JWT_SECRET: ci-only-not-a-real-secret-value-for-token-tests
+          DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+
+  frontend:
+    name: Frontend — typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      # The build is a test in its own right: it is what Vercel runs, and it
+      # catches things tsc does not, such as a missing asset import.
+      - name: Build
+        run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    # Reports without blocking the merge. The mobile tree currently carries
+    # known advisories in the Expo toolchain; failing every build on those would
+    # train people to ignore this job, which is worse than not having it. Move
+    # to a hard failure once the backlog is cleared.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [server, frontend, mobile]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm audit (${{ matrix.workspace }})
+        working-directory: ${{ matrix.workspace }}
+        # --omit=dev because a vulnerability in a build tool is not the same
+        # risk as one in code that serves requests. Production deps only.
+        run: npm audit --audit-level=high --omit=dev
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history to scan commits, not just the tip.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

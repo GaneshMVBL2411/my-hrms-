@@ -1,0 +1,61 @@
+# ---------------------------------------------------------------------------
+# The HRMS API as a hosted service.
+#
+# Why this exists: the mobile app and the portal both talk to the API, and until
+# now that meant a laptop with an ngrok tunnel open. An installed app that stops
+# working when someone closes a terminal is a demo, not a deployment. This gives
+# the API a permanent address so the phone build can stop depending on this
+# machine entirely.
+#
+# Render reads this file from the repository root and needs no CLI, which is why
+# it is here rather than a Dockerfile or a Fly config — connecting the GitHub
+# repo in the dashboard is the whole setup.
+#
+# The three secrets are deliberately NOT in this file. `sync: false` means Render
+# prompts for them once and stores them itself; writing them here would put the
+# database password and the token signing key into git, which is exactly what
+# server/.env exists to avoid.
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: hrms-api
+    runtime: node
+    plan: free
+    # The repo holds frontend, server and mobile side by side, so the build has
+    # to be told which one it is.
+    rootDir: server
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # Render's own check. The route already reports which database it reached,
+    # so a service that starts but cannot see Neon is caught here rather than by
+    # the first employee who tries to sign in.
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Neon, as the application role. NOT the owner: Postgres exempts owners
+      # from row level security, which would silently disable every tenant
+      # policy in the system.
+      - key: DATABASE_URL
+        sync: false
+      # Only used by the one-off scripts in src/scripts, never by the running
+      # server. Safe to leave unset in production.
+      - key: DATABASE_URL_OWNER
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_TTL
+        value: 8h
+      # Set these once the frontend and the app have their final hostnames.
+      # CORS_ORIGIN only matters for the browser; the mobile app sends no Origin.
+      # WEBAUTHN_RP_ID must be the bare domain, and WEBAUTHN_ORIGIN must match
+      # the browser's origin exactly — a credential is bound to the origin it
+      # was enrolled on and will not be offered anywhere else.
+      - key: CORS_ORIGIN
+        sync: false
+      - key: WEBAUTHN_RP_ID
+        sync: false
+      - key: WEBAUTHN_ORIGIN
+        sync: false
+      - key: WEBAUTHN_RP_NAME
+        value: Whhoohh Path HRMS
