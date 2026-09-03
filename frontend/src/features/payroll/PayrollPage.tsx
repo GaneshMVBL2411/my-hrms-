@@ -25,16 +25,25 @@ function money(value: number) {
 export function PayrollPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const isManager = user?.role === "founder" || user?.role === "hr_admin"
+  const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const now = new Date()
   const [runMonth, setRunMonth] = useState(now.getMonth() + 1)
   const [runYear, setRunYear] = useState(now.getFullYear())
   const [viewPayslipId, setViewPayslipId] = useState<number | null>(null)
   const [structureEmployee, setStructureEmployee] = useState<{ id: number; name: string } | null>(null)
 
+  // Filtered by employee explicitly, not left to row level security.
+  //
+  // RLS narrows this to the caller's own rows for an ordinary employee, which
+  // made the omission invisible — but HR may read the whole company, so for
+  // them "My Payslips" listed everyone's, truncated at the page size. The
+  // section has to mean the same thing whoever is signed in.
   const { data: myPayslips, isLoading: loadingMine } = useQuery({
-    queryKey: ["payslips", "mine"],
-    queryFn: () => listPayslips({ page: 1, pageSize: 24 }),
+    queryKey: ["payslips", "mine", user?.employeeId],
+    queryFn: () => listPayslips({ page: 1, pageSize: 24, employeeId: user!.employeeId! }),
+    // A super admin has no employee record, so there is nothing of their own
+    // to show and the query would filter on undefined.
+    enabled: !!user?.employeeId,
   })
 
   const { data: employees } = useQuery({
@@ -111,35 +120,35 @@ export function PayrollPage() {
           </div>
 
           {summary && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Card className="rounded-md border shadow-none">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
+              <Card className="rounded-xl border shadow-xs interactive-card">
                 <CardContent className="py-4">
                   <p className="text-xs text-muted-foreground">Employees Paid</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">{summary.employeeCount}</p>
                 </CardContent>
               </Card>
-              <Card className="rounded-md border shadow-none">
+              <Card className="rounded-xl border shadow-xs interactive-card">
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">Total Gross</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">{money(summary.totalGross)}</p>
+                  <p className="text-xs text-muted-foreground">Total Payout</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{money(summary.totalNet)}</p>
                 </CardContent>
               </Card>
-              <Card className="rounded-md border shadow-none">
+              <Card className="rounded-xl border shadow-xs interactive-card">
                 <CardContent className="py-4">
                   <p className="text-xs text-muted-foreground">Total Deductions</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">{money(summary.totalDeductions)}</p>
                 </CardContent>
               </Card>
-              <Card className="rounded-md border shadow-none">
+              <Card className="rounded-xl border shadow-xs interactive-card">
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">Total Net</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">{money(summary.totalNet)}</p>
+                  <p className="text-xs text-muted-foreground">Total Gross</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{money(summary.totalGross)}</p>
                 </CardContent>
               </Card>
             </div>
           )}
 
-          <div className="overflow-hidden rounded-md border border-border bg-card">
+          <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -184,7 +193,7 @@ export function PayrollPage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">My Payslips</h2>
-        <div className="overflow-hidden rounded-md border border-border bg-card">
+        <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
           <Table>
             <TableHeader>
               <TableRow>

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { checkIn, checkOut, getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
+import { BiometricPunch } from "@/features/attendance/BiometricPunch"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { AttendanceStatus } from "@/features/attendance/types"
 import { errorMessage } from "@/lib/errors"
@@ -30,7 +31,7 @@ export function AttendancePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const now = new Date()
-  const isManager = user?.role === "founder" || user?.role === "hr_admin"
+  const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [teamDate, setTeamDate] = useState(format(now, "yyyy-MM-dd"))
 
   const { data: myAttendance, isLoading: loadingMine } = useQuery({
@@ -85,7 +86,7 @@ export function AttendancePage() {
         </TabsList>
 
         <TabsContent value="mine" className="mt-4 flex flex-col gap-4">
-          <Card className="rounded-md border shadow-none">
+          <Card className="rounded-xl border shadow-xs interactive-card">
             <CardContent className="flex flex-col items-start justify-between gap-4 py-5 sm:flex-row sm:items-center">
               <div>
                 <p className="text-sm text-muted-foreground">{format(now, "EEEE, MMMM d, yyyy")}</p>
@@ -100,7 +101,7 @@ export function AttendancePage() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  className="rounded-md"
+                  className="rounded-xl shadow-xs"
                   disabled={!!today?.checkIn || checkInMutation.isPending}
                   onClick={() => checkInMutation.mutate()}
                 >
@@ -109,7 +110,7 @@ export function AttendancePage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="rounded-md"
+                  className="rounded-xl"
                   disabled={!today?.checkIn || !!today?.checkOut || checkOutMutation.isPending}
                   onClick={() => checkOutMutation.mutate()}
                 >
@@ -120,7 +121,9 @@ export function AttendancePage() {
             </CardContent>
           </Card>
 
-          <div className="overflow-hidden rounded-md border border-border bg-card">
+          <BiometricPunch today={today} />
+
+          <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -196,7 +199,7 @@ export function AttendancePage() {
               )}
             </div>
 
-            <div className="overflow-hidden rounded-md border border-border bg-card">
+            <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow>

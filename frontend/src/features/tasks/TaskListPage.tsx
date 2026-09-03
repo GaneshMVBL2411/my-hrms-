@@ -38,7 +38,7 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
 
   const statusFilter = searchParams.get("taskStatus") ?? undefined
   const isManagerTier =
-    user?.role === "founder" || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
+    (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
 
   const { data, isLoading } = useQuery({
     queryKey: ["tasks", { projectId, statusFilter }],
@@ -80,7 +80,7 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
         )}
         <div className="flex items-center gap-2">
           <Select value={statusFilter ?? "all"} onValueChange={(v) => updateStatusParam(v === "all" ? undefined : v)}>
-            <SelectTrigger className="w-40 rounded-md">
+            <SelectTrigger className="w-32 sm:w-40 rounded-xl">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -92,7 +92,7 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
             </SelectContent>
           </Select>
           {isManagerTier && (
-            <Button className="rounded-md" onClick={() => setFormOpen(true)}>
+            <Button className="rounded-xl shadow-xs" onClick={() => setFormOpen(true)}>
               <Plus className="mr-2 size-4" />
               New Task
             </Button>
@@ -100,7 +100,7 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
         <Table>
           <TableHeader>
             <TableRow>

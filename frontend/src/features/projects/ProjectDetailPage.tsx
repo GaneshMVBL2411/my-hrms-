@@ -40,7 +40,7 @@ export function ProjectDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<string>("")
 
-  const canManage = user?.role === "founder" || user?.role === "hr_admin" || user?.role === "project_manager"
+  const canManage = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager"
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["projects", projectId],

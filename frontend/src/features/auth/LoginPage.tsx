@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/features/auth/AuthContext"
 import { errorMessage } from "@/lib/errors"
-import logoMark from "@/assets/logo-mark.png"
+import { AnimatedLogo } from "@/components/shared/AnimatedLogo"
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email"),
@@ -57,8 +57,8 @@ export function LoginPage() {
       <div className="grid w-full max-w-4xl overflow-hidden rounded-md border border-border bg-card md:grid-cols-2">
         <div className="hidden flex-col justify-between border-r border-border bg-secondary p-10 text-secondary-foreground md:flex">
           <div className="flex items-center gap-2">
-            <img src={logoMark} alt="" className="size-10 object-contain" />
-            <span className="text-lg font-semibold">Whhohh Path LLP</span>
+            <AnimatedLogo className="size-10" />
+            <span className="text-lg font-semibold">Whhoohh Path LLP</span>
           </div>
 
           <div className="space-y-3">
@@ -71,14 +71,14 @@ export function LoginPage() {
           </div>
 
           <p className="text-xs text-secondary-foreground/50">
-            &copy; {new Date().getFullYear()} Whhohh Path LLP. All rights reserved.
+            &copy; {new Date().getFullYear()} Whhoohh Path LLP. All rights reserved.
           </p>
         </div>
 
         <div className="flex flex-col justify-center p-8 sm:p-10">
           <div className="mb-8 flex items-center gap-2 md:hidden">
-            <img src={logoMark} alt="" className="size-9 object-contain" />
-            <span className="text-lg font-semibold text-foreground">Whhohh Path LLP</span>
+            <AnimatedLogo className="size-9" />
+            <span className="text-lg font-semibold text-foreground">Whhoohh Path LLP</span>
           </div>
 
           <h1 className="text-2xl font-semibold text-foreground">Welcome back</h1>
@@ -91,7 +91,7 @@ export function LoginPage() {
                 id="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@whhohhpath.com"
+                placeholder="you@whhoohhpath.com"
                 className="rounded-md"
                 {...register("email")}
               />

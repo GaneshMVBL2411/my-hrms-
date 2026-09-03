@@ -11,6 +11,7 @@ import {
   getEmployeeReport,
   getLeaveReport,
   getProjectReport,
+  getReportingManagerReport,
   getTaskReport,
 } from "@/features/reports/api"
 import { getSummary, listPayslips } from "@/features/payroll/api"
@@ -66,6 +67,12 @@ export function ReportsPage() {
     queryKey: ["reports", "employees"],
     queryFn: getEmployeeReport,
   })
+  const { data: managers, isLoading: loadingManagers } = useQuery({
+    queryKey: ["reports", "reporting-manager"],
+    queryFn: getReportingManagerReport,
+  })
+
+  const unassigned = managers?.find((m) => m.managerId === null)?.reports.length ?? 0
 
   return (
     <div className="flex flex-1 flex-col gap-5">
@@ -107,6 +114,7 @@ export function ReportsPage() {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="employees">Employees</TabsTrigger>
+          <TabsTrigger value="managers">Reporting Manager</TabsTrigger>
         </TabsList>
 
         <TabsContent value="attendance" className="mt-4 flex flex-col gap-3">
@@ -318,6 +326,80 @@ export function ReportsPage() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="managers" className="mt-4 flex flex-col gap-3">
+          <ReportToolbar
+            onCsv={() =>
+              downloadCsv(
+                "reporting-managers.csv",
+                // One line per employee rather than per manager: a spreadsheet
+                // cannot filter a nested list, and "who reports to whom" is the
+                // question this file gets opened to answer.
+                (managers ?? []).flatMap((m) =>
+                  m.reports.map((r) => ({
+                    employee: r.fullName,
+                    employee_department: r.departmentName,
+                    employee_status: r.status,
+                    reporting_manager: m.managerId ? m.managerName : "",
+                    manager_designation: m.managerDesignation,
+                  }))
+                )
+              )
+            }
+          />
+          {unassigned > 0 && (
+            <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+              {unassigned} {unassigned === 1 ? "employee has" : "employees have"} no reporting manager. Set one in
+              Employees → edit → Reporting manager.
+            </p>
+          )}
+          <div className="flex flex-col gap-3">
+            {loadingManagers && <Skeleton className="h-24 w-full rounded-md" />}
+            {!loadingManagers && (managers?.length ?? 0) === 0 && (
+              <p className="rounded-md border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+                No employees to report on yet.
+              </p>
+            )}
+            {managers?.map((m) => (
+              <div key={m.managerId ?? "unassigned"} className="overflow-hidden rounded-md border border-border bg-card">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {m.managerName}
+                      {m.managerDesignation && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">{m.managerDesignation}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{m.departmentName}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{m.teamSize}</span>{" "}
+                    {m.teamSize === 1 ? "report" : "reports"}
+                    {m.inactiveCount > 0 && ` · ${m.inactiveCount} inactive`}
+                  </p>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {m.reports.map((r) => (
+                      <TableRow key={r.employeeId}>
+                        <TableCell className="font-medium text-foreground">{r.fullName}</TableCell>
+                        <TableCell>{r.departmentName}</TableCell>
+                        <TableCell className="capitalize text-muted-foreground">{r.status}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ))}
           </div>
         </TabsContent>
       </Tabs>

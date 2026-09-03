@@ -7,18 +7,18 @@ import type { AttendanceRecord, AttendanceSummary, PaginatedAttendance } from "@
 const COLUMNS =
   "id, employee_id, employee_name, date, check_in, check_out, break_minutes, status, working_hours, is_late"
 
-async function getRecord(id: number): Promise<AttendanceRecord> {
+export async function getAttendanceRecord(id: number): Promise<AttendanceRecord> {
   return unwrap<AttendanceRecord>(
     await supabase.from("attendance_detail").select(COLUMNS).eq("id", id).single()
   )
 }
 
 export async function checkIn(): Promise<AttendanceRecord> {
-  return getRecord(unwrap<number>(await supabase.rpc("attendance_check_in")))
+  return getAttendanceRecord(unwrap<number>(await supabase.rpc("attendance_check_in")))
 }
 
 export async function checkOut(): Promise<AttendanceRecord> {
-  return getRecord(unwrap<number>(await supabase.rpc("attendance_check_out")))
+  return getAttendanceRecord(unwrap<number>(await supabase.rpc("attendance_check_out")))
 }
 
 export async function getMyAttendance(year: number, month: number): Promise<AttendanceRecord[]> {

@@ -35,23 +35,45 @@ export async function getMyStructure(): Promise<SalaryStructure | null> {
   return getStructure(employeeId)
 }
 
+/**
+ * A structure is versioned, so saving one supersedes the current row and records
+ * the delta in `salary_revisions` — an UPDATE would overwrite the history that
+ * Salary History reads. `upsert_salary_structure` does both atomically and is
+ * the only writer once migration 0009 is applied.
+ *
+ * Until it is, that function does not exist and the call comes back PGRST202,
+ * which is why the direct write below is still here: 0001's schema keeps one row
+ * per employee under `unique (employee_id)`, and writing it is all the editor can
+ * do. The fallback retires itself — 0009 adds the function, so the first branch
+ * wins from then on, and 0007 revokes the table from browser sessions, so a stale
+ * fallback would fail loudly rather than quietly skip the revision history.
+ */
 export async function upsertStructure(
   employeeId: number,
   payload: SalaryStructureUpsert
 ): Promise<SalaryStructure> {
-  const { error } = await supabase.from("salary_structures").upsert(
-    {
-      employee_id: employeeId,
-      basic: payload.basic,
-      hra: payload.hra,
-      special_allowance: payload.specialAllowance,
-      pf_percent: payload.pfPercent,
-      esi_percent: payload.esiPercent,
-      effective_from: payload.effectiveFrom,
-    },
-    { onConflict: "employee_id" }
-  )
-  if (error) throw new ApiError(error.message, error.code)
+  const row = {
+    basic: payload.basic,
+    hra: payload.hra,
+    special_allowance: payload.specialAllowance,
+    pf_percent: payload.pfPercent,
+    esi_percent: payload.esiPercent,
+    effective_from: payload.effectiveFrom,
+  }
+
+  const { error } = await supabase.rpc("upsert_salary_structure", {
+    p_employee_id: employeeId,
+    p_payload: row,
+  })
+
+  if (error?.code === "PGRST202") {
+    const { error: directError } = await supabase
+      .from("salary_structures")
+      .upsert({ employee_id: employeeId, ...row }, { onConflict: "employee_id" })
+    if (directError) throw new ApiError(directError.message, directError.code)
+  } else if (error) {
+    throw new ApiError(error.message, error.code)
+  }
 
   return (await getStructure(employeeId))!
 }

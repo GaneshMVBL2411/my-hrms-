@@ -152,3 +152,619 @@
     display: none !important;
   }
 }
+
+
+/* -----------------------------------------------------------------------------
+   The brand mark on the login screen, hung rather than pinned.
+
+   Three motions, in the order physics would produce them: it drops in and
+   settles, then floats, then sways. Each one is on its own element
+   (AnimatedLogo.tsx) because all three are transforms, and CSS resolves two
+   animations targeting transform on one element by letting the last win — the
+   other motions would silently disappear.
+
+   The float and the sway are given periods that do not divide into each other,
+   2.6s against 4.1s. Matched, they would peak together and the loop would be
+   obvious within a couple of cycles; offset, they drift in and out of phase and
+   the movement never quite repeats.
+
+   All of it sits inside the reduced-motion guard. That also handles the
+   entrance correctly: the drop animates opacity, so were these rules to apply
+   with animation suppressed, the mark would be left invisible. Guarded, a
+   visitor who wants less movement simply gets a still logo.
+   ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .logo-hang-drop {
+    animation: logo-drop 0.72s cubic-bezier(0.2, 0.85, 0.3, 1.05) both;
+  }
+  /* Both idle loops wait for the drop to finish. Starting them underneath it
+     would fight the settle and leave the mark visibly off-centre. */
+  .logo-hang-float {
+    animation: logo-float 2.6s 0.72s ease-in-out infinite;
+  }
+  .logo-hang-sway {
+    animation: logo-sway 4.1s 0.72s ease-in-out infinite;
+  }
+}
+
+@keyframes logo-drop {
+  from { transform: translateY(-26px) scale(0.86); opacity: 0; }
+  60%  { transform: translateY(3px) scale(1.02);   opacity: 1; }
+  to   { transform: none;                          opacity: 1; }
+}
+
+@keyframes logo-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@keyframes logo-sway {
+  0%, 100% { transform: rotate(-1.4deg); }
+  50%      { transform: rotate(1.4deg); }
+}
+
+/* Ambient breathing and float for Company Logo */
+@keyframes logo-ambient-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translateY(-2.5px) rotate(0.8deg) scale(1.015);
+  }
+  66% {
+    transform: translateY(1px) rotate(-0.8deg) scale(0.995);
+  }
+}
+
+/* Realistic spring squash-and-stretch on click/tap */
+@keyframes realistic-logo-spring {
+  0% {
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+  22% {
+    transform: scale(0.80, 0.76) translateY(2.5px) rotate(-8deg);
+  }
+  50% {
+    transform: scale(1.22, 1.18) translateY(-4px) rotate(6deg);
+    filter: brightness(1.15) drop-shadow(0 6px 14px rgba(15, 76, 52, 0.35));
+  }
+  75% {
+    transform: scale(0.95, 0.98) translateY(1px) rotate(-2deg);
+  }
+  88% {
+    transform: scale(1.04, 1.02) translateY(-0.5px) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+}
+
+.logo-ambient {
+  animation: logo-ambient-float 4.2s ease-in-out infinite;
+}
+
+.logo-spring-active {
+  animation: realistic-logo-spring 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+}
+
+.logo-interactive {
+  display: inline-block;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+}
+
+.logo-interactive:hover {
+  transform: scale(1.1) translateY(-2px) rotate(2deg);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.12));
+}
+
+.logo-interactive:active {
+  transform: scale(0.84, 0.80) translateY(2px) rotate(-6deg);
+}
+
+/* -----------------------------------------------------------------------------
+   Light running a W around the mark.
+
+   Two strokes of the same path. The faint one is always there and is what the
+   light appears to travel along; without it the bright dash reads as a stray
+   streak crossing the logo rather than light moving down something.
+
+   The bright one is a short lit segment and a long gap — `stroke-dasharray:
+   10 90` against a path restated as 100 units by pathLength — pushed around the
+   path by animating the offset. That is the whole trick: nothing moves, the
+   dash pattern slides.
+
+   Sized larger than the logo and allowed to overflow, so the light passes
+   outside the mark rather than across it. `overflow: visible` matters — the
+   glow is a drop-shadow and would be clipped at the viewBox edge otherwise.
+   ------------------------------------------------------------------------- */
+.logo-trace {
+  /* Comfortably outside the mark on every side. */
+  inset: -26%;
+  width: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.logo-trace-track,
+.logo-trace-light {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The tube: the logo's gold, kept faint enough to be an implication. */
+.logo-trace-track {
+  stroke: color-mix(in oklab, #d9b45f 55%, transparent);
+  stroke-width: 1.5;
+  opacity: 0.28;
+}
+
+.logo-trace-light {
+  stroke: #f0d493;
+  stroke-width: 2.2;
+  stroke-dasharray: 10 90;
+  /* Parked off the start of the path, so nothing shows until it is animated —
+     and nothing sits frozen mid-path for anyone with motion turned down. */
+  stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 3px rgb(217 180 95 / 0.9));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Linear, because light travelling a tube does not ease. The delay lets the
+     mark finish dropping in before the light sets off. */
+  .logo-trace-light {
+    animation: logo-trace 3.4s 0.72s linear infinite;
+  }
+}
+
+@keyframes logo-trace {
+  from { stroke-dashoffset: 100; }
+  to   { stroke-dashoffset: 0; }
+}
+/* -----------------------------------------------------------------------------
+   Installed on a phone.
+
+   index.html asks for viewport-fit=cover so the app paints edge to edge, which
+   means it also paints under the notch and the home indicator. The insets go
+   back on here.
+
+   They belong on the shell rather than on <body>: the shell is h-svh, and
+   padding <body> would push a full-height element past the bottom of the
+   screen. On the shell itself, border-box absorbs the padding and the layout
+   inside simply gets the smaller box it should have had.
+   ------------------------------------------------------------------------- */
+.app-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* A tap on a button must not double as a zoom gesture, and on iOS a control
+   whose text is under 16px makes Safari zoom the page when it takes focus.
+   Both are only ever wrong on touch, so neither rule reaches the desktop. */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a {
+    touch-action: manipulation;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+}
+/* -----------------------------------------------------------------------------
+   Sidebar nav icons, drawn as lit 3D objects.
+
+   Four layers make each object, all painted from the same silhouette by
+   <Extrude> in nav-icons-3d.tsx, so every icon is lit identically:
+
+     side    a dark copy offset down-right — the extruded flank
+     face    the body colour
+     shade   a black gradient, transparent at the top and strongest at the
+             bottom right: the form shadow that rounds the object off
+     sheen   a white gradient in the opposite direction: the light itself,
+             hitting the upper left
+
+   The two gradients are pure white and black, with no colour of their own, so
+   one pair of definitions lights all fifteen objects whatever colour they are.
+
+   The body tones are mixed from currentColor, which the sidebar sets per item
+   from nav-config.ts — one colour per row still drives the whole object. They
+   sit light on purpose: the modelling comes from the gradients above, so the
+   base can stay soft without the object going flat.
+   ------------------------------------------------------------------------- */
+.i3d {
+  /* the object's own shadow on the surface behind it, which is what stops the
+     icon reading as a sticker lying flat on the sidebar */
+  filter: drop-shadow(0 1px 1.1px rgb(15 23 42 / 0.24));
+}
+.i3d .f-top  { fill: color-mix(in oklab, currentColor 34%, white); }
+.i3d .f-mid  { fill: color-mix(in oklab, currentColor 88%, white); }
+.i3d .f-side { fill: color-mix(in oklab, currentColor 70%, black); }
+.i3d .f-deep { fill: color-mix(in oklab, currentColor 52%, black); }
+.i3d .f-hi   { fill: color-mix(in oklab, currentColor 10%, white); }
+.i3d .s-deep {
+  fill: none;
+  stroke: color-mix(in oklab, currentColor 52%, black);
+  stroke-linecap: round;
+}
+
+/* On a dark sidebar the shadow tones would sink into the background and the
+   object would lose its edges, so they stop well short of black — and the cast
+   shadow goes darker, since it now falls on a dark surface. */
+.dark .i3d { filter: drop-shadow(0 1px 1.4px rgb(0 0 0 / 0.5)); }
+.dark .i3d .f-side { fill: color-mix(in oklab, currentColor 82%, black); }
+.dark .i3d .f-deep { fill: color-mix(in oklab, currentColor 66%, black); }
+.dark .i3d .s-deep { stroke: color-mix(in oklab, currentColor 66%, black); }
+
+/* -----------------------------------------------------------------------------
+   Sidebar nav icon motion.
+
+   Clicking a row plays that icon's own movement, and the rule throughout is
+   that what moves is what would move on the real object. A clock's hands sweep
+   while its case stays still; a laptop's lid hinges off a base that stays on
+   the desk; ticks land in a checklist a row at a time. Nothing turns as a whole
+   except the gear, because a gear turning as a whole is what a gear does.
+
+   Two mechanics are worth knowing before editing these:
+
+     * Chrome does not render 3D transforms on SVG children, so every rotation
+       into depth is faked with a 2D scale toward the hinge. A lid collapsing to
+       its base edge and a lid swinging open are the same picture at 18px.
+     * A part that pivots somewhere other than its own centre needs
+       `transform-box: view-box` and an origin in viewBox units. The extruded
+       copies of a part sit inside a translated group, so a view-box origin puts
+       each copy's hinge exactly where that copy is drawn — the shadow hinges
+       with the object rather than sliding out from under it.
+
+   The animation is retriggered by remounting the icon with a changing React
+   key, so it replays on every click — including clicking the current page.
+   ------------------------------------------------------------------------- */
+
+/* Pivots. Outside the media query: these describe where a part is hinged, which
+   is true whether or not it is allowed to move. */
+.clk-hour,
+.clk-min                  { transform-box: view-box; transform-origin: 11.2px 11.4px; }
+.lv-canopy                { transform-box: view-box; transform-origin: 11.5px 3.2px; }
+.bnk-top                  { transform-box: view-box; transform-origin: 11.4px 9px; }
+.ast-lid                  { transform-box: view-box; transform-origin: 11.5px 13.6px; }
+.rec-plus                 { transform-box: view-box; transform-origin: 17.6px 11.3px; }
+.rec-person               { transform-box: view-box; transform-origin: 8.6px 19.4px; }
+.ann-horn                 { transform-box: view-box; transform-origin: 17.8px 11.4px; }
+.ann-ring-1, .ann-ring-2  { transform-box: view-box; transform-origin: 18px 11.4px; }
+.prj-1, .prj-2, .prj-3    { transform-box: fill-box; transform-origin: 50% 100%; }
+.rpt-1, .rpt-2, .rpt-3    { transform-box: fill-box; transform-origin: 50% 100%; }
+.doc-fold                 { transform-box: fill-box; transform-origin: 0% 100%; }
+.doc-l1, .doc-l2, .doc-l3 { transform-box: fill-box; transform-origin: 0% 50%; }
+/* Each tick is about 3.5 units long, so a 4-unit dash covers it whole: offset 4
+   hides it, offset 0 draws it. Under the dash length it still renders solid. */
+.tsk-1, .tsk-2, .tsk-3    { stroke-dasharray: 4; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Settings — the whole gear turns, which is the point of a gear. */
+  .nav-anim-spin { animation: nav-spin .8s cubic-bezier(.45,.05,.2,1) both; }
+
+  /* Employees — the pair bob in turn, like a queue shuffling forward. */
+  .nav-anim-walk .emp-front { animation: emp-bob .62s cubic-bezier(.3,.8,.4,1) both; }
+  .nav-anim-walk .emp-back  { animation: emp-bob .62s cubic-bezier(.3,.8,.4,1) both; animation-delay: .12s; }
+
+  /* Attendance — the minute hand takes a full turn, the hour hand the hour. */
+  .nav-anim-sweep .clk-min  { animation: clk-turn 1.05s cubic-bezier(.45,.05,.25,1) both; }
+  .nav-anim-sweep .clk-hour { animation: clk-hour 1.05s cubic-bezier(.45,.05,.25,1) both; }
+
+  /* Leaves — the parasol springs open; the handle stays put. */
+  .nav-anim-daysoff .lv-canopy { animation: lv-open .62s cubic-bezier(.34,1.5,.5,1) both; }
+
+  /* Projects — three cards dealt onto the board, left to right. */
+  .nav-anim-board .prj-1 { animation: prj-rise .5s cubic-bezier(.34,1.5,.5,1) both; }
+  .nav-anim-board .prj-2 { animation: prj-rise .5s cubic-bezier(.34,1.5,.5,1) both; animation-delay: .1s; }
+  .nav-anim-board .prj-3 { animation: prj-rise .5s cubic-bezier(.34,1.5,.5,1) both; animation-delay: .2s; }
+
+  /* Tasks — the ticks draw themselves on, top row first. */
+  .nav-anim-ticks .tsk-1 { animation: tsk-draw .3s ease-out both; }
+  .nav-anim-ticks .tsk-2 { animation: tsk-draw .3s ease-out both; animation-delay: .18s; }
+  .nav-anim-ticks .tsk-3 { animation: tsk-draw .3s ease-out both; animation-delay: .36s; }
+
+  /* Company Bank — the pediment drops onto the columns; the plinth holds. */
+  .nav-anim-stamp .bnk-top { animation: bnk-press .55s cubic-bezier(.4,0,.2,1) both; }
+
+  /* Assets — the lid hinges open off a base that stays put. */
+  .nav-anim-lid .ast-lid { animation: ast-open .8s cubic-bezier(.34,1.3,.5,1) both; }
+
+  /* Recruitment — the plus springs in and the figure nods. */
+  .nav-anim-join .rec-plus   { animation: rec-pop .6s cubic-bezier(.34,1.56,.64,1) both; }
+  .nav-anim-join .rec-person { animation: rec-nod .6s ease-in-out both; }
+
+  /* Documents — the corner lifts and lies back down while the text is written. */
+  .nav-anim-pageturn .doc-fold { animation: doc-lift .7s cubic-bezier(.4,0,.2,1) both; }
+  .nav-anim-pageturn .doc-l1   { animation: doc-write .34s ease-out both; animation-delay: .1s; }
+  .nav-anim-pageturn .doc-l2   { animation: doc-write .34s ease-out both; animation-delay: .22s; }
+  .nav-anim-pageturn .doc-l3   { animation: doc-write .34s ease-out both; animation-delay: .34s; }
+
+  /* Announcements — the horn kicks back and two rings leave the mouth. */
+  .nav-anim-shout .ann-horn   { animation: ann-recoil .6s cubic-bezier(.3,.9,.4,1) both; }
+  .nav-anim-shout .ann-ring-1 { animation: ann-ping .7s ease-out both; }
+  .nav-anim-shout .ann-ring-2 { animation: ann-ping .7s ease-out both; animation-delay: .14s; }
+
+  /* Messages — the back bubble speaks, the front one answers a beat later. */
+  .nav-anim-reply .msg-back  { animation: msg-pop .5s cubic-bezier(.34,1.5,.5,1) both; }
+  .nav-anim-reply .msg-front { animation: msg-pop .5s cubic-bezier(.34,1.5,.5,1) both; animation-delay: .22s; }
+
+  /* Reports — the bars grow out of the floor, shortest first. */
+  .nav-anim-bars .rpt-1 { animation: rpt-grow .55s cubic-bezier(.34,1.5,.5,1) both; }
+  .nav-anim-bars .rpt-2 { animation: rpt-grow .55s cubic-bezier(.34,1.5,.5,1) both; animation-delay: .1s; }
+  .nav-anim-bars .rpt-3 { animation: rpt-grow .55s cubic-bezier(.34,1.5,.5,1) both; animation-delay: .2s; }
+
+  /* Calendar — page sheets flip up over the top binding strictly one after
+     another; each completes its turn before the next begins. */
+  .nav-anim-calpages .cal-p1 { animation: cal-page .42s ease-in-out both; }
+  .nav-anim-calpages .cal-p2 { animation: cal-page .42s ease-in-out both; animation-delay: .38s; }
+  .nav-anim-calpages .cal-p3 { animation: cal-page .42s ease-in-out both; animation-delay: .76s; }
+
+  /* Payroll — the lid flips open, then banknotes rise and fan out one by one. */
+  .nav-anim-paybox .paylid  { animation: pay-lid 1.15s ease-in-out both; }
+  .nav-anim-paybox .note-1  { animation: note-up .6s cubic-bezier(.34,1.4,.5,1) both; animation-delay: .22s; }
+  .nav-anim-paybox .note-2  { animation: note-left .6s cubic-bezier(.34,1.4,.5,1) both; animation-delay: .36s; }
+  .nav-anim-paybox .note-3  { animation: note-right .6s cubic-bezier(.34,1.4,.5,1) both; animation-delay: .50s; }
+
+  /* Dashboard — the four tiles orbit the grid clockwise, each stepping corner
+     to corner in the same 1.2s so the square formation stays intact. Animates
+     the SVG geometry x/y (user units), independent of rendered size. */
+  .nav-anim-orbit .dbd-tl { animation: dbd-a 1.2s ease-in-out both; }
+  .nav-anim-orbit .dbd-tr { animation: dbd-b 1.2s ease-in-out both; }
+  .nav-anim-orbit .dbd-br { animation: dbd-c 1.2s ease-in-out both; }
+  .nav-anim-orbit .dbd-bl { animation: dbd-d 1.2s ease-in-out both; }
+}
+
+@keyframes nav-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+
+/* Weight landing and rising again, rather than a symmetrical bounce. */
+@keyframes emp-bob {
+  0%, 100% { transform: translateY(0); }
+  30%      { transform: translateY(-2.6px); }
+  60%      { transform: translateY(0.6px); }
+  82%      { transform: translateY(-0.8px); }
+}
+
+/* A full sweep for the minute hand; the hour hand covers the hour it earns. */
+@keyframes clk-turn { to { transform: rotate(360deg); } }
+@keyframes clk-hour { to { transform: rotate(30deg); } }
+
+/* The canopy unfurls from the tip of the pole, past its size and back. */
+@keyframes lv-open {
+  0%   { transform: scale(0.32); }
+  55%  { transform: scale(1.1); }
+  78%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+/* Dealt onto the board: up past the mark, then settling onto it. */
+@keyframes prj-rise {
+  0%   { transform: scaleY(0);    opacity: 0; }
+  60%  { transform: scaleY(1.12); opacity: 1; }
+  100% { transform: scaleY(1);    opacity: 1; }
+}
+
+@keyframes tsk-draw { from { stroke-dashoffset: 4; } to { stroke-dashoffset: 0; } }
+
+/* Down onto the columns, squashing on contact, then back. */
+@keyframes bnk-press {
+  0%   { transform: translateY(-3.4px); }
+  45%  { transform: translateY(0.8px) scaleY(0.9); }
+  70%  { transform: translateY(0) scaleY(1.04); }
+  100% { transform: translateY(0) scaleY(1); }
+}
+
+/* The lid folds down to its hinge and swings back up past level. */
+@keyframes ast-open {
+  0%   { transform: scaleY(1); }
+  42%  { transform: scaleY(0.08); }
+  72%  { transform: scaleY(1.06); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes rec-pop {
+  0%   { transform: scale(0);    opacity: 0; }
+  45%  { transform: scale(1.3);  opacity: 1; }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+@keyframes rec-nod {
+  0%, 100% { transform: rotate(0); }
+  40%      { transform: rotate(-6deg); }
+  70%      { transform: rotate(3deg); }
+}
+
+/* The corner turns over on its crease and lies back down. */
+@keyframes doc-lift {
+  0%, 100% { transform: scaleX(1); }
+  45%      { transform: scaleX(-0.25); }
+  75%      { transform: scaleX(1.08); }
+}
+@keyframes doc-write { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* The horn kicks back against the shout, then recovers. */
+@keyframes ann-recoil {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  18%      { transform: translateX(-1.6px) rotate(-7deg); }
+  45%      { transform: translateX(0.8px) rotate(4deg); }
+  72%      { transform: translateX(-0.3px) rotate(-1.5deg); }
+}
+@keyframes ann-ping {
+  0%   { transform: scale(0.5); opacity: 0; }
+  25%  { opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* A bubble arriving: up, slightly over, and settling — a message landing in a
+   thread, rather than a shape scaling in place. */
+.msg-back, .msg-front { transform-box: view-box; transform-origin: 12px 12px; }
+@keyframes msg-pop {
+  0%   { transform: translateY(1.6px) scale(0.86); }
+  55%  { transform: translateY(-0.9px) scale(1.06); }
+  80%  { transform: translateY(0.2px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes rpt-grow {
+  0%   { transform: scaleY(0); }
+  62%  { transform: scaleY(1.14); }
+  84%  { transform: scaleY(0.96); }
+  100% { transform: scaleY(1); }
+}
+
+/* Calendar page sheets: each turns over its top binding and settles back flat.
+   The sheet folds up to an edge-on line, flips over the top, then returns;
+   staggered per sheet they riffle, and the sheet beneath shows through. */
+.calpage { transform-box: fill-box; transform-origin: 50% 0%; }
+@keyframes cal-page {
+  0%   { transform: scaleY(1); }
+  50%  { transform: scaleY(-1); }
+  100% { transform: scaleY(1); }
+}
+
+/* Payroll money box: lid swings open on its left hinge, holds, then closes. */
+.paylid  { transform-box: fill-box; transform-origin: 0% 100%; }
+.paynote { transform-box: fill-box; }
+@keyframes pay-lid {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(-125deg); }
+  80%  { transform: rotate(-125deg); }
+  100% { transform: rotate(0deg); }
+}
+/* Notes rise out of the box (y up) and fan (x), then drop back — user units. */
+@keyframes note-up    { 0%{x:7px;y:12px}  45%{x:7px;y:1px}   70%{x:7px;y:1px}   100%{x:7px;y:12px} }
+@keyframes note-left  { 0%{x:7px;y:12px}  45%{x:2px;y:4px}   70%{x:2px;y:4px}   100%{x:7px;y:12px} }
+@keyframes note-right { 0%{x:7px;y:12px}  45%{x:12px;y:4px}  70%{x:12px;y:4px}  100%{x:7px;y:12px} }
+
+/* Dashboard orbit — corners are TL(4,4) TR(13,4) BR(13,13) BL(4,13); each
+   tile starts at a different corner and walks the same clockwise loop. */
+@keyframes dbd-a { 0%{x:4px;y:4px}   25%{x:13px;y:4px}  50%{x:13px;y:13px} 75%{x:4px;y:13px}  100%{x:4px;y:4px} }
+@keyframes dbd-b { 0%{x:13px;y:4px}  25%{x:13px;y:13px} 50%{x:4px;y:13px}  75%{x:4px;y:4px}   100%{x:13px;y:4px} }
+@keyframes dbd-c { 0%{x:13px;y:13px} 25%{x:4px;y:13px}  50%{x:4px;y:4px}   75%{x:13px;y:4px}  100%{x:13px;y:13px} }
+@keyframes dbd-d { 0%{x:4px;y:13px}  25%{x:4px;y:4px}   50%{x:13px;y:4px}  75%{x:13px;y:13px} 100%{x:4px;y:13px} }
+
+/* =============================================================================
+   Realistic Physical Movement & Tactile Micro-Interactions
+   ============================================================================= */
+
+@keyframes realistic-module-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.992);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes realistic-option-slide {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes realistic-spring-bounce {
+  0% {
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+  30% {
+    transform: scale(0.78) translateY(2px) rotate(-8deg);
+  }
+  65% {
+    transform: scale(1.22) translateY(-2px) rotate(4deg);
+  }
+  85% {
+    transform: scale(0.95) translateY(0.5px) rotate(-1deg);
+  }
+  100% {
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+}
+
+.animate-module-in {
+  animation: realistic-module-enter 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-option-in {
+  animation: realistic-option-slide 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.icon-spring {
+  animation: realistic-spring-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Universal realistic tactile icon & button click interaction */
+button,
+a,
+[role="button"],
+.interactive-click {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active,
+a:active,
+[role="button"]:active,
+.interactive-click:active {
+  transform: scale(0.96) translateY(0.5px);
+  transition: transform 0.08s ease-out;
+}
+
+button:not(:active),
+a:not(:active),
+[role="button"]:not(:active),
+.interactive-click:not(:active) {
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Tactile movement for SVG icons on active click/press */
+button:active svg,
+a:active svg,
+[role="button"]:active svg,
+.interactive-click:active svg {
+  transform: scale(0.80) rotate(-6deg) translateY(1.5px);
+  transition: transform 0.1s cubic-bezier(0.2, 0, 0, 1);
+}
+
+button:not(:active) svg,
+a:not(:active) svg,
+[role="button"]:not(:active) svg,
+.interactive-click:not(:active) svg {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Card tactile hover & active elevation */
+.interactive-card {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease-out, border-color 0.2s ease-out;
+}
+.interactive-card:hover {
+  transform: translateY(-2.5px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.04);
+}
+.dark .interactive-card:hover {
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 4px 8px -2px rgba(0, 0, 0, 0.2);
+}
+.interactive-card:active {
+  transform: translateY(0) scale(0.985);
+}
+
+/* Mobile responsive touch improvements */
+@media (max-width: 768px) {
+  .overflow-x-auto,
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

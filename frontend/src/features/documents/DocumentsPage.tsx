@@ -22,11 +22,20 @@ import type { LetterPayload, LetterType, Policy } from "@/features/documents/typ
 
 const letterTypes: { value: LetterType; label: string }[] = [
   { value: "offer", label: "Offer Letter" },
-  { value: "appointment", label: "Appointment Letter" },
+  // Labelled for both names it goes by — it is issued on joining and is what
+  // people mean when they ask HR for a "joining letter".
+  { value: "appointment", label: "Appointment / Joining Letter" },
   { value: "experience", label: "Experience Letter" },
   { value: "relieving", label: "Relieving Letter" },
   { value: "certificate", label: "Certificate of Employment" },
 ]
+
+/** The two letters that state commercial terms, and so collect them on the form. */
+const TERMS_LETTER_TYPES: LetterType[] = ["offer", "appointment"]
+
+function statesTerms(letterType: LetterType) {
+  return TERMS_LETTER_TYPES.includes(letterType)
+}
 
 interface GenerateForm {
   employeeId: string
@@ -43,7 +52,7 @@ const DEFAULT_NOTICE_PERIOD_TEXT = "Thirty days on either side after confirmatio
 export function DocumentsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const isManager = user?.role === "founder" || user?.role === "hr_admin"
+  const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [formOpen, setFormOpen] = useState(false)
   const [editingPolicy, setEditingPolicy] = useState<Policy | undefined>(undefined)
   const [letter, setLetter] = useState<LetterPayload | null>(null)
@@ -101,8 +110,8 @@ export function DocumentsPage() {
         letterType: values.letterType,
         customMessage: values.customMessage || undefined,
         annualCtc: values.annualCtc ? Number(values.annualCtc) : undefined,
-        probationText: values.letterType === "offer" ? values.probationText || undefined : undefined,
-        noticePeriodText: values.letterType === "offer" ? values.noticePeriodText || undefined : undefined,
+        probationText: statesTerms(values.letterType) ? values.probationText || undefined : undefined,
+        noticePeriodText: statesTerms(values.letterType) ? values.noticePeriodText || undefined : undefined,
       }),
     onSuccess: (data) => {
       setLetter(data)
@@ -230,7 +239,7 @@ export function DocumentsPage() {
                   />
                 </div>
 
-                {selectedLetterType === "offer" && (
+                {statesTerms(selectedLetterType) && (
                   <>
                     <div className="space-y-1.5">
                       <Label>Annual CTC (optional)</Label>

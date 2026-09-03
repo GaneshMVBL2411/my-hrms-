@@ -1,7 +1,12 @@
-import type { PostgrestError } from "@supabase/supabase-js"
 import { toCamel } from "@/lib/case"
 
-/** Anything Supabase rejected — carries the Postgres/PostgREST message verbatim. */
+/**
+ * Anything the database rejected — carries the Postgres message verbatim.
+ *
+ * The messages still come from Postgres, so the HRMS's own business rules
+ * ("Already checked in today", "You don't have permission") reach the user
+ * unchanged after the move to Neon. Only the transport in between differs.
+ */
 export class ApiError extends Error {
   readonly code?: string
 
@@ -12,9 +17,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The failure shape the client returns. Was `PostgrestError` from
+ * @supabase/supabase-js; now declared here, because the only fields any call
+ * site ever reads are `message` and `code` — the rest of PostgrestError
+ * (details, hint, toJSON) was never touched.
+ */
+interface ResultError {
+  message: string
+  code?: string
+}
+
 interface Result<T> {
   data: T | null
-  error: PostgrestError | null
+  error: ResultError | null
 }
 
 /** Throws on failure, otherwise returns the rows converted to camelCase. */
@@ -24,7 +40,7 @@ export function unwrap<T>({ data, error }: Result<unknown>): T {
 }
 
 /** Same, but for statements whose result we don't need (deletes, fire-and-forget RPCs). */
-export function unwrapVoid({ error }: { error: PostgrestError | null }): void {
+export function unwrapVoid({ error }: { error: ResultError | null }): void {
   if (error) throw new ApiError(error.message, error.code)
 }
 

@@ -106,20 +106,20 @@ function OrganizationDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Employees" value={totalEmployees} icon={Users} tone="primary" />
-        <StatCard label="Present Today" value={attendanceSummary?.present ?? "—"} icon={UserCheck} tone="success" />
-        <StatCard label="On Leave" value={attendanceSummary?.onLeave ?? "—"} icon={CalendarClock} tone="warning" />
-        <StatCard label="Absent" value={attendanceSummary?.absent ?? "—"} icon={UserX} tone="danger" />
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
+        <StatCard label="Total Employees" value={totalEmployees} icon={Users} tone="primary" to="/employees" />
+        <StatCard label="Present Today" value={attendanceSummary?.present ?? "—"} icon={UserCheck} tone="success" to="/attendance" />
+        <StatCard label="On Leave" value={attendanceSummary?.onLeave ?? "—"} icon={CalendarClock} tone="warning" to="/leaves" />
+        <StatCard label="Absent" value={attendanceSummary?.absent ?? "—"} icon={UserX} tone="danger" to="/attendance" />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <StatCard label="Tasks In Progress" value={pendingTasks?.total ?? "—"} icon={ListChecks} tone="warning" />
-        <StatCard label="Tasks Completed" value={completedTasks?.total ?? "—"} icon={CheckCircle2} tone="success" />
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+        <StatCard label="Tasks In Progress" value={pendingTasks?.total ?? "—"} icon={ListChecks} tone="warning" to="/tasks?taskStatus=in_progress" />
+        <StatCard label="Tasks Completed" value={completedTasks?.total ?? "—"} icon={CheckCircle2} tone="success" to="/tasks?taskStatus=completed" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="rounded-md border shadow-none">
+        <Card className="rounded-xl border shadow-xs interactive-card">
           <CardHeader>
             <CardTitle className="text-base">Employees by department</CardTitle>
           </CardHeader>

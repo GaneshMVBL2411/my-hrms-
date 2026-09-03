@@ -38,7 +38,7 @@ export function ProjectListPage() {
   const search = searchParams.get("q") ?? ""
   const status = searchParams.get("status") ?? undefined
 
-  const canManage = user?.role === "founder" || user?.role === "hr_admin" || user?.role === "project_manager"
+  const canManage = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager"
 
   const { data, isLoading } = useQuery({
     queryKey: ["projects", { page, search, status }],
@@ -82,7 +82,7 @@ export function ProjectListPage() {
           />
         </div>
         <Select value={status ?? "all"} onValueChange={(v) => updateParam("status", v === "all" ? undefined : v)}>
-          <SelectTrigger className="w-full rounded-md sm:w-48">
+          <SelectTrigger className="w-full rounded-xl sm:w-48">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -95,7 +95,7 @@ export function ProjectListPage() {
         </Select>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
         <Table>
           <TableHeader>
             <TableRow>

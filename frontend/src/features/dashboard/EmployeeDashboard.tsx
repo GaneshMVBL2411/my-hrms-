@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useNavigate } from "react-router-dom"
-import { CalendarClock, CalendarCheck, Clock, FolderKanban, Wallet } from "lucide-react"
+import { CalendarClock, CalendarCheck, Clock, FolderKanban, Wallet, Users } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,7 @@ import { useAuth } from "@/features/auth/AuthContext"
 import { getMyAttendance } from "@/features/attendance/api"
 import { getBalance } from "@/features/leaves/api"
 import { listProjects } from "@/features/projects/api"
+import { listEmployees } from "@/features/employees/api"
 import { listPayslips } from "@/features/payroll/api"
 import { listAnnouncements } from "@/features/announcements/api"
 import { ApplyLeaveDialog } from "@/features/leaves/ApplyLeaveDialog"
@@ -61,6 +62,15 @@ export function EmployeeDashboard() {
   const { data: announcements } = useQuery({ queryKey: ["announcements", "dashboard"], queryFn: listAnnouncements })
   const topAnnouncements = (announcements ?? []).slice(0, 4)
 
+  // Only the count is wanted, so one row is fetched and the rest read off the
+  // total. On a phone the sidebar is behind the menu button, which left the
+  // directory effectively hidden from employees — this puts it one tap from
+  // where they land.
+  const { data: team } = useQuery({
+    queryKey: ["employees", "team-count"],
+    queryFn: () => listEmployees({ page: 1, pageSize: 1 }),
+  })
+
   return (
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
@@ -86,28 +96,32 @@ export function EmployeeDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
         <StatCard
           label="Today"
           value={today?.checkIn ? (today.checkOut ? "Checked out" : "Checked in") : "Not clocked in"}
           icon={Clock}
           tone={today?.checkIn ? "success" : "warning"}
+          to="/attendance"
         />
         <StatCard
           label="Working Hours Today"
           value={today?.workingHours != null ? `${today.workingHours}h` : "—"}
           icon={Clock}
           tone="primary"
+          to="/attendance"
         />
-        <StatCard label="Present Days (Month)" value={presentDays} icon={CalendarCheck} tone="primary" />
-        <StatCard label="Leave Balance" value={remainingLeaves} icon={CalendarClock} tone="success" />
-        <StatCard label="Assigned Projects" value={myProjects?.total ?? 0} icon={FolderKanban} tone="primary" />
+        <StatCard label="Present Days (Month)" value={presentDays} icon={CalendarCheck} tone="primary" to="/attendance" />
+        <StatCard label="Leave Balance" value={remainingLeaves} icon={CalendarClock} tone="success" to="/leaves" />
+        <StatCard label="Assigned Projects" value={myProjects?.total ?? 0} icon={FolderKanban} tone="primary" to="/projects" />
         <StatCard
           label="Latest Net Pay"
           value={payslip ? `₹${payslip.netPay.toLocaleString("en-IN")}` : "—"}
           icon={Wallet}
           tone="success"
+          to="/payroll"
         />
+        <StatCard label="Team" value={team?.total ?? "—"} icon={Users} tone="primary" to="/employees" />
       </div>
 
       <TaskKanbanWidget employeeId={employeeId} />

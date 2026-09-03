@@ -4,8 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Whhohh Path HRMS</title>
+    <!-- viewport-fit=cover lets the app paint under the notch and the home
+         indicator; index.css pays that back with safe-area padding, without
+         which the sidebar toggle sits under the status bar on an iPhone. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0"
+    />
+    <!-- Installed as an app: standalone display, no browser chrome. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f4c34" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- iOS reads its own vendor-prefixed pair rather than the manifest, so
+         both have to be here for an installed iPhone to lose the Safari bars. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="HRMS" />
+    <title>Whhoohh Path HRMS</title>
   </head>
   <body>
     <div id="root"></div>

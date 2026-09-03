@@ -22,7 +22,7 @@ const categoryTone: Record<AnnouncementCategory, "success" | "warning" | "second
 export function AnnouncementsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const isManager = user?.role === "founder" || user?.role === "hr_admin"
+  const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Announcement | undefined>(undefined)
 

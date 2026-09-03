@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -33,7 +34,14 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>
 
-export function ApplyLeaveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+interface ApplyLeaveDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Pre-selects the type when opened from a balance card. */
+  defaultLeaveTypeId?: number
+}
+
+export function ApplyLeaveDialog({ open, onOpenChange, defaultLeaveTypeId }: ApplyLeaveDialogProps) {
   const queryClient = useQueryClient()
   const { data: types = [] } = useQuery({ queryKey: ["leaves", "types"], queryFn: listTypes })
 
@@ -44,6 +52,19 @@ export function ApplyLeaveDialog({ open, onOpenChange }: { open: boolean; onOpen
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
+
+  // The dialog stays mounted between openings, so reset on the way in: without
+  // this a second visit keeps the previous dates, and the type handed over from
+  // a balance card would never reach the field.
+  useEffect(() => {
+    if (!open) return
+    reset({
+      leaveTypeId: defaultLeaveTypeId ? String(defaultLeaveTypeId) : "",
+      startDate: "",
+      endDate: "",
+      reason: "",
+    })
+  }, [open, defaultLeaveTypeId, reset])
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>

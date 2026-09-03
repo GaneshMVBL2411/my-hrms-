@@ -15,7 +15,12 @@ export function likePattern(search: string): string {
   return `%${search.replace(/[,()"\\.]/g, " ").trim()}%`
 }
 
-/** Best-effort audit trail; a failed log must never fail the action it describes. */
-export function logAudit(action: string, entity: string, entityId?: number | null): void {
-  void supabase.from("audit_logs").insert({ action, entity, entity_id: entityId ?? null })
+/** Best-effort audit trail; routes to server-side RPC to prevent table tampering or flooding. */
+export function logAudit(action: string, entity: string, entityId?: number | null, meta?: Record<string, unknown>): void {
+  void supabase.rpc("log_application_audit", {
+    p_action: action,
+    p_entity: entity,
+    p_entity_id: entityId ?? null,
+    p_meta: meta ?? null,
+  })
 }

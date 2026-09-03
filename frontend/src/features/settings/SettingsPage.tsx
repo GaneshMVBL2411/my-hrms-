@@ -27,7 +27,7 @@ import type { Department, Designation } from "@/features/employees/types"
 function CompanyProfileTab() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const canEdit = user?.role === "founder"
+  const canEdit = (user?.role === "founder" || user?.role === "company_admin")
 
   const { data: settings, isLoading } = useQuery({ queryKey: ["settings", "company"], queryFn: getCompanySettings })
   const { register, handleSubmit, reset } = useForm({

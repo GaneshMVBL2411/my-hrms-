@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/shared/PasswordInput"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -21,10 +22,17 @@ import {
   createEmployee,
   listDepartments,
   listDesignations,
+  listEmployees,
   updateEmployee,
 } from "@/features/employees/api"
 import type { Employee } from "@/features/employees/types"
 import { errorMessage } from "@/lib/errors"
+
+/**
+ * Radix refuses an empty SelectItem value (it reserves "" for the placeholder),
+ * so "nobody" needs a stand-in that is converted back to null on save.
+ */
+const NONE = "none"
 
 const roles = [
   { value: "founder", label: "Founder" },
@@ -59,6 +67,7 @@ const baseSchema = {
   gender: z.enum(["male", "female", "other"]).optional(),
   departmentId: z.string().optional(),
   designationId: z.string().optional(),
+  reportingManagerId: z.string().optional(),
   joiningDate: z.string().optional(),
   status: z.enum(["active", "inactive", "on_notice", "exited"]),
   role: z.string().min(1, "Role is required"),
@@ -87,6 +96,14 @@ export function EmployeeFormDialog({
 
   const { data: departments = [] } = useQuery({ queryKey: ["departments"], queryFn: listDepartments })
   const { data: designations = [] } = useQuery({ queryKey: ["designations"], queryFn: listDesignations })
+  // Anyone in the company can be a manager — the reporting line follows the org
+  // chart, not the role, and a team lead who reports to another team lead is
+  // ordinary. Only the employee being edited is excluded, below.
+  const { data: managerOptions } = useQuery({
+    queryKey: ["employees", "manager-picker"],
+    queryFn: () => listEmployees({ page: 1, pageSize: 500 }),
+    enabled: open,
+  })
 
   const {
     register,
@@ -112,6 +129,7 @@ export function EmployeeFormDialog({
       gender: employee?.gender ?? undefined,
       departmentId: employee?.departmentId ? String(employee.departmentId) : undefined,
       designationId: employee?.designationId ? String(employee.designationId) : undefined,
+      reportingManagerId: employee?.reportingManagerId ? String(employee.reportingManagerId) : NONE,
       joiningDate: employee?.joiningDate ?? "",
       status: employee?.status ?? "active",
       role: employee?.role ?? "employee",
@@ -137,6 +155,10 @@ export function EmployeeFormDialog({
         gender: values.gender || undefined,
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
         designationId: values.designationId ? Number(values.designationId) : undefined,
+        reportingManagerId:
+          values.reportingManagerId && values.reportingManagerId !== NONE
+            ? Number(values.reportingManagerId)
+            : null,
         joiningDate: values.joiningDate || undefined,
         status: values.status,
         role: values.role,
@@ -198,7 +220,7 @@ export function EmployeeFormDialog({
           {!isEdit && (
             <div className="space-y-1.5">
               <Label>Temporary password</Label>
-              <Input type="password" autoComplete="new-password" {...register("password")} />
+              <PasswordInput autoComplete="new-password" {...register("password")} />
               {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
             </div>
           )}
@@ -283,6 +305,33 @@ export function EmployeeFormDialog({
                           {d.title}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reporting manager</Label>
+              <Controller
+                control={control}
+                name="reportingManagerId"
+                render={({ field }) => (
+                  <Select value={field.value ?? NONE} onValueChange={field.onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="No reporting manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>No reporting manager</SelectItem>
+                      {managerOptions?.items
+                        // Nobody reports to themselves; offering it would create
+                        // a cycle the org chart cannot draw.
+                        .filter((m) => m.id !== employee?.id)
+                        .map((m) => (
+                          <SelectItem key={m.id} value={String(m.id)}>
+                            {m.fullName}
+                            {m.designationTitle ? ` — ${m.designationTitle}` : ""}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 )}

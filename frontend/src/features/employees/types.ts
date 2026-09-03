@@ -76,7 +76,9 @@ export interface EmployeeFormValues {
   gender?: Gender
   departmentId?: number
   designationId?: number
-  reportingManagerId?: number
+  // Nullable, not merely optional: clearing the field has to send null so the
+  // reporting line can actually be removed, where undefined would leave it.
+  reportingManagerId?: number | null
   joiningDate?: string
   skills?: string[]
   experienceYears?: number

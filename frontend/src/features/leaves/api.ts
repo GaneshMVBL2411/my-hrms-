@@ -10,7 +10,7 @@ import type {
 
 const REQUEST_COLUMNS =
   "id, employee_id, employee_name, leave_type_id, leave_type_name, start_date, end_date, " +
-  "days_count, reason, status, decided_by_name, decided_at, created_at"
+  "days_count, reason, status, decided_by_name, decided_at, created_at, decision_note"
 
 async function getRequest(id: number): Promise<LeaveRequest> {
   return unwrap<LeaveRequest>(
@@ -46,6 +46,11 @@ export async function getBalance(): Promise<LeaveBalance[]> {
 export async function listRequests(params: {
   scope?: "mine" | "all"
   status?: LeaveStatus
+  /** Narrows an "all" listing to one person. Ignored for scope "mine". */
+  employeeId?: number
+  /** Inclusive window, `YYYY-MM-DD`. Together they select a month. */
+  from?: string
+  to?: string
 }): Promise<LeaveRequest[]> {
   let query = supabase.from("leave_request_detail").select(REQUEST_COLUMNS)
 
@@ -54,10 +59,19 @@ export async function listRequests(params: {
     if (error) throw new ApiError(error.message, error.code)
     if (!employeeId) return []
     query = query.eq("employee_id", employeeId)
+  } else if (params.employeeId) {
+    query = query.eq("employee_id", params.employeeId)
   }
+
   if (params.status) query = query.eq("status", params.status)
 
-  return unwrap<LeaveRequest[]>(await query.order("created_at", { ascending: false }))
+  // Overlap, not containment: leave running 28 Aug -> 3 Sep is time off in both
+  // months, and an August report that omitted it would understate the month.
+  if (params.from) query = query.gte("end_date", params.from)
+  if (params.to) query = query.lte("start_date", params.to)
+
+  const column = params.from || params.to ? "start_date" : "created_at"
+  return unwrap<LeaveRequest[]>(await query.order(column, { ascending: false }))
 }
 
 export async function applyLeave(payload: LeaveRequestCreate): Promise<LeaveRequest> {
@@ -72,13 +86,22 @@ export async function applyLeave(payload: LeaveRequestCreate): Promise<LeaveRequ
   return getRequest(id)
 }
 
-export async function approveLeave(id: number): Promise<LeaveRequest> {
-  unwrapVoid(await supabase.rpc("decide_leave_request", { p_id: id, p_approve: true }))
+/**
+ * The note is optional on approval and required on a refusal — a decision that
+ * costs someone their plans should come with a reason they can read, rather
+ * than a status change they have to come and ask about.
+ */
+export async function approveLeave(id: number, note?: string): Promise<LeaveRequest> {
+  unwrapVoid(
+    await supabase.rpc("decide_leave_request", { p_id: id, p_approve: true, p_note: note?.trim() || null })
+  )
   return getRequest(id)
 }
 
-export async function rejectLeave(id: number): Promise<LeaveRequest> {
-  unwrapVoid(await supabase.rpc("decide_leave_request", { p_id: id, p_approve: false }))
+export async function rejectLeave(id: number, note: string): Promise<LeaveRequest> {
+  unwrapVoid(
+    await supabase.rpc("decide_leave_request", { p_id: id, p_approve: false, p_note: note.trim() })
+  )
   return getRequest(id)
 }
 

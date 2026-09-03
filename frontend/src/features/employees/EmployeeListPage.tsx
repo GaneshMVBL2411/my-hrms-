@@ -136,7 +136,7 @@ export function EmployeeListPage() {
         </Select>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-border bg-card shadow-none">
+      <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
         <Table>
           <TableHeader>
             <TableRow>

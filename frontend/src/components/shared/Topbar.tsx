@@ -45,26 +45,31 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <Menu className="size-5" />
       </Button>
 
-      <form onSubmit={handleSearch} className="flex w-full min-w-0 max-w-sm items-center">
+      <form onSubmit={handleSearch} className="flex w-full min-w-0 max-w-[200px] sm:max-w-sm items-center">
         <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-transform duration-200 group-focus-within:scale-110" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search employees, projects, tasks..."
-            className="rounded-md pl-9"
+            placeholder="Search..."
+            className="h-9 rounded-xl pl-9 text-xs sm:text-sm bg-muted/40 transition-all focus:bg-background focus:ring-1"
           />
         </div>
       </form>
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
         <Button
           variant="ghost"
           size="icon"
+          className="rounded-xl"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           aria-label="Toggle theme"
         >
-          {theme === "dark" ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
+          {theme === "dark" ? (
+            <Sun className="size-4.5 transition-transform duration-500 hover:rotate-90" />
+          ) : (
+            <Moon className="size-4.5 transition-transform duration-500 hover:-rotate-12" />
+          )}
         </Button>
 
         <Popover>

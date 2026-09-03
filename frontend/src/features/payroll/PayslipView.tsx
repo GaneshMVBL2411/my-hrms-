@@ -9,6 +9,7 @@ import { PrintDocument } from "@/components/shared/PrintDocument"
 import { rupeesInWords } from "@/lib/numberToWords"
 import { downloadElementAsPdf } from "@/lib/pdf"
 import { getPayslip } from "@/features/payroll/api"
+import { useAuth } from "@/features/auth/AuthContext"
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -42,6 +43,11 @@ export function PayslipView({
     queryFn: () => getPayslip(payslipId!),
     enabled: open && !!payslipId,
   })
+
+  // The tenant issuing this payslip. Hardcoding it printed every company's
+  // payslip under Whhoohh Path's name, and kept the misspelling that migration
+  // 0018 corrected in the database but could not reach from here.
+  const { user } = useAuth()
 
   const printRef = useRef<HTMLDivElement>(null)
   const [downloading, setDownloading] = useState(false)
@@ -89,8 +95,8 @@ export function PayslipView({
             </div>
 
             <PrintDocument ref={printRef}
-              companyName="Whhohh Path LLP"
-              refLine={`Ref: WPL/PAY/${payslip.year}/${String(payslip.id).padStart(3, "0")}`}
+              companyName={user?.companyName ?? ""}
+              refLine={`Ref: ${user?.companyCode ?? "HR"}/PAY/${payslip.year}/${String(payslip.id).padStart(3, "0")}`}
             >
               <p className="text-center text-sm font-semibold text-[#0f4c34]">
                 Salary Slip · For the month of {MONTHS[payslip.month - 1]} {payslip.year}
@@ -160,13 +166,12 @@ export function PayslipView({
                 and intended solely for the employee named above.
               </p>
 
-              <div className="mt-4 flex justify-between text-xs">
-                <div>
-                  <p className="text-[10px] text-[#6e7679]">Prepared by</p>
-                  <p className="mt-4 font-medium">Payroll</p>
-                </div>
+              {/* justify-end, not justify-between: with the "Prepared by" block
+                  gone the signatory is the only child and would otherwise drift
+                  to the left edge. */}
+              <div className="mt-4 flex justify-end text-xs">
                 <div className="text-right">
-                  <p className="text-[10px] text-[#6e7679]">For Whhohh Path LLP</p>
+                  <p className="text-[10px] text-[#6e7679]">For {user?.companyName ?? ""}</p>
                   <p className="mt-4 font-medium">Authorised Signatory</p>
                 </div>
               </div>

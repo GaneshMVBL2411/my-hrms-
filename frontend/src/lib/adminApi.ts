@@ -1,23 +1,21 @@
-import { FunctionsHttpError } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 import { ApiError } from "@/lib/errors"
 
 /**
- * Calls the `admin-users` Edge Function — the only privileged operation left,
- * because creating or resetting a login needs the service key.
+ * Calls the `admin-users` endpoint — the only privileged operation left,
+ * because creating a login writes a password hash, and that must never be
+ * something a browser session can do directly.
+ *
+ * This was a Supabase Edge Function; it is now a route on the HRMS API server,
+ * backed by create_employee_with_login(). The call site did not change.
  */
 export async function invokeAdmin<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("admin-users", { body })
+  const { data, error } = await supabase.functions.invoke<T>("admin-users", { body })
 
-  if (error) {
-    if (error instanceof FunctionsHttpError) {
-      const details = await error.context.json().catch(() => null)
-      throw new ApiError(details?.error ?? error.message)
-    }
-    throw new ApiError(
-      "Could not reach the admin-users function. Deploy it with `supabase functions deploy admin-users`."
-    )
-  }
+  // The client already returns the server's message, so there is no second
+  // error shape to unwrap — the Supabase version had to reach into
+  // FunctionsHttpError.context to recover it.
+  if (error) throw new ApiError(error.message, error.code)
 
   return data as T
 }

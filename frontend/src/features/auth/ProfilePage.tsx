@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/shared/PasswordInput"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { changePassword } from "@/features/auth/authApi"
@@ -76,19 +76,19 @@ export function ProfilePage() {
           <form onSubmit={handleSubmit((values) => mutation.mutate(values))} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Current password</Label>
-              <Input type="password" {...register("currentPassword")} />
+              <PasswordInput autoComplete="current-password" {...register("currentPassword")} />
               {errors.currentPassword && (
                 <p className="text-xs text-destructive">{errors.currentPassword.message}</p>
               )}
             </div>
             <div className="space-y-1.5">
               <Label>New password</Label>
-              <Input type="password" {...register("newPassword")} />
+              <PasswordInput autoComplete="new-password" {...register("newPassword")} />
               {errors.newPassword && <p className="text-xs text-destructive">{errors.newPassword.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Confirm new password</Label>
-              <Input type="password" {...register("confirmPassword")} />
+              <PasswordInput autoComplete="new-password" {...register("confirmPassword")} />
               {errors.confirmPassword && (
                 <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>
               )}

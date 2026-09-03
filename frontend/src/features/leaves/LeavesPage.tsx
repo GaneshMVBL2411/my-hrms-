@@ -10,21 +10,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { getBalance, listRequests, approveLeave, rejectLeave, cancelLeave } from "@/features/leaves/api"
 import { ApplyLeaveDialog } from "@/features/leaves/ApplyLeaveDialog"
+import { LeaveTypeDetailSheet } from "@/features/leaves/LeaveTypeDetailSheet"
+import { AllLeavesPanel } from "@/features/leaves/AllLeavesPanel"
+import { DecideLeaveDialog } from "@/features/leaves/DecideLeaveDialog"
 import { useAuth } from "@/features/auth/AuthContext"
-import type { LeaveStatus } from "@/features/leaves/types"
+import { statusTone, type LeaveBalance, type LeaveRequest } from "@/features/leaves/types"
 import { errorMessage } from "@/lib/errors"
-
-const statusTone: Record<LeaveStatus, "success" | "warning" | "danger"> = {
-  approved: "success",
-  pending: "warning",
-  rejected: "danger",
-}
 
 export function LeavesPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const isApprover = user?.role === "founder" || user?.role === "hr_admin"
+  const isApprover = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [applyOpen, setApplyOpen] = useState(false)
+  const [applyTypeId, setApplyTypeId] = useState<number | undefined>()
+  const [selectedBalance, setSelectedBalance] = useState<LeaveBalance | null>(null)
+  // Which request is being decided, and which way. Held together so the dialog
+  // can never open asking "why are you rejecting?" about an approval.
+  const [deciding, setDeciding] = useState<{ request: LeaveRequest; approve: boolean } | null>(null)
 
   const { data: balances, isLoading: loadingBalances } = useQuery({
     queryKey: ["leaves", "balance"],
@@ -44,22 +46,16 @@ export function LeavesPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["leaves"] })
 
-  const approveMutation = useMutation({
-    mutationFn: approveLeave,
-    onSuccess: () => {
-      toast.success("Leave approved")
+  const decideMutation = useMutation({
+    mutationFn: ({ id, approve, note }: { id: number; approve: boolean; note: string }) =>
+      approve ? approveLeave(id, note) : rejectLeave(id, note),
+    onSuccess: (_data, variables) => {
+      toast.success(variables.approve ? "Leave approved" : "Leave rejected — they will see your note")
+      setDeciding(null)
       invalidate()
     },
-    onError: () => toast.error("Could not approve leave"),
-  })
-
-  const rejectMutation = useMutation({
-    mutationFn: rejectLeave,
-    onSuccess: () => {
-      toast.success("Leave rejected")
-      invalidate()
-    },
-    onError: () => toast.error("Could not reject leave"),
+    onError: (error, variables) =>
+      toast.error(errorMessage(error, `Could not ${variables.approve ? "approve" : "reject"} leave`)),
   })
 
   const cancelMutation = useMutation({
@@ -77,32 +73,42 @@ export function LeavesPage() {
     <div className="flex flex-1 flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-foreground">Leaves</h1>
-        {!isApprover && (
-          <Button className="rounded-md" onClick={() => setApplyOpen(true)}>
-            <Plus className="mr-2 size-4" />
-            Apply Leave
-          </Button>
-        )}
+        {/* Approvers are employees too: the balance cards below are their own,
+            and `apply_leave` only ever asks for a linked employee profile. */}
+        <Button className="rounded-xl shadow-xs" onClick={() => setApplyOpen(true)}>
+          <Plus className="mr-2 size-4" />
+          Apply Leave
+        </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {loadingBalances &&
-          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md" />)}
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+        {/* A real button, not a click handler on the Card: the cards are the
+            only way into the per-type history, so they have to be reachable by
+            keyboard and announced as actionable. */}
         {balances?.map((b) => (
-          <Card key={b.id} className="rounded-md border shadow-none">
-            <CardContent className="py-4">
-              <p className="text-xs text-muted-foreground">{b.leaveTypeName}</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {b.remainingDays}
-                <span className="text-sm font-normal text-muted-foreground"> / {b.allocatedDays} days</span>
-              </p>
+          <Card key={b.id} className="rounded-xl border shadow-xs transition-all duration-300 interactive-card hover:border-primary/50">
+            <CardContent className="p-0">
+              <button
+                type="button"
+                onClick={() => setSelectedBalance(b)}
+                aria-label={`${b.leaveTypeName}: ${b.remainingDays} of ${b.allocatedDays} days remaining`}
+                className="w-full cursor-pointer rounded-xl px-4 py-3.5 sm:px-5 sm:py-4 text-left select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <p className="text-xs text-muted-foreground truncate">{b.leaveTypeName}</p>
+                <p className="mt-1 text-base sm:text-lg font-bold text-foreground">
+                  {b.remainingDays}
+                  <span className="text-xs sm:text-sm font-normal text-muted-foreground"> / {b.allocatedDays} d</span>
+                </p>
+              </button>
             </CardContent>
           </Card>
         ))}
       </div>
 
       <Tabs defaultValue={isApprover ? "approvals" : "mine"}>
-        <TabsList className="rounded-md">
+        <TabsList className="rounded-xl">
           <TabsTrigger value="mine">My Leaves</TabsTrigger>
           {isApprover && (
             <TabsTrigger value="approvals" className="gap-1.5">
@@ -114,10 +120,11 @@ export function LeavesPage() {
               )}
             </TabsTrigger>
           )}
+          {isApprover && <TabsTrigger value="all">All Leaves</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="mine" className="mt-4">
-          <div className="overflow-hidden rounded-md border border-border bg-card">
+          <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -156,6 +163,14 @@ export function LeavesPage() {
                       <Badge variant={statusTone[r.status]} className="capitalize">
                         {r.status}
                       </Badge>
+                      {r.decisionNote && (
+                        <p className="mt-1 max-w-64 text-xs leading-snug text-muted-foreground">
+                          <span className="font-medium text-foreground">
+                            {r.decidedByName ? `${r.decidedByName}: ` : ""}
+                          </span>
+                          {r.decisionNote}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       {r.status === "pending" && (
@@ -178,7 +193,7 @@ export function LeavesPage() {
 
         {isApprover && (
           <TabsContent value="approvals" className="mt-4">
-            <div className="overflow-hidden rounded-md border border-border bg-card">
+            <div className="overflow-x-auto touch-pan-x rounded-xl border border-border bg-card shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -220,7 +235,7 @@ export function LeavesPage() {
                             variant="ghost"
                             size="icon-sm"
                             className="text-success hover:text-success"
-                            onClick={() => approveMutation.mutate(r.id)}
+                            onClick={() => setDeciding({ request: r, approve: true })}
                           >
                             <Check className="size-4" />
                           </Button>
@@ -228,7 +243,7 @@ export function LeavesPage() {
                             variant="ghost"
                             size="icon-sm"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => rejectMutation.mutate(r.id)}
+                            onClick={() => setDeciding({ request: r, approve: false })}
                           >
                             <X className="size-4" />
                           </Button>
@@ -241,9 +256,46 @@ export function LeavesPage() {
             </div>
           </TabsContent>
         )}
+        {isApprover && (
+          <TabsContent value="all" className="mt-4">
+            <AllLeavesPanel />
+          </TabsContent>
+        )}
       </Tabs>
 
-      <ApplyLeaveDialog open={applyOpen} onOpenChange={setApplyOpen} />
+      <DecideLeaveDialog
+        request={deciding?.request ?? null}
+        approve={deciding?.approve ?? true}
+        open={deciding !== null}
+        onOpenChange={(next) => !next && setDeciding(null)}
+        pending={decideMutation.isPending}
+        onConfirm={(note) =>
+          deciding && decideMutation.mutate({ id: deciding.request.id, approve: deciding.approve, note })
+        }
+      />
+
+      <LeaveTypeDetailSheet
+        balance={selectedBalance}
+        requests={myRequests ?? []}
+        isLoading={loadingMine}
+        onOpenChange={(open) => !open && setSelectedBalance(null)}
+        onApply={(leaveTypeId) => {
+          // Hand off to the dialog with the type already chosen, and close the
+          // panel behind it — two stacked overlays trap focus in the wrong one.
+          setSelectedBalance(null)
+          setApplyTypeId(leaveTypeId)
+          setApplyOpen(true)
+        }}
+      />
+
+      <ApplyLeaveDialog
+        open={applyOpen}
+        onOpenChange={(open) => {
+          setApplyOpen(open)
+          if (!open) setApplyTypeId(undefined)
+        }}
+        defaultLeaveTypeId={applyTypeId}
+      />
     </div>
   )
 }

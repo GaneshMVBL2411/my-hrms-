@@ -1,5 +1,12 @@
 export type LeaveStatus = "pending" | "approved" | "rejected"
 
+/** Shared so the list and the detail panel never drift into different colours. */
+export const statusTone: Record<LeaveStatus, "success" | "warning" | "danger"> = {
+  approved: "success",
+  pending: "warning",
+  rejected: "danger",
+}
+
 export interface LeaveType {
   id: number
   name: string
@@ -29,6 +36,8 @@ export interface LeaveRequest {
   status: LeaveStatus
   decidedByName: string | null
   decidedAt: string | null
+  /** Why HR approved or turned it down, in their words. Shown to the employee. */
+  decisionNote: string | null
   createdAt: string
 }
 

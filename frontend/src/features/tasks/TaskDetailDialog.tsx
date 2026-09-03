@@ -51,7 +51,7 @@ export function TaskDetailDialog({
   const [newComment, setNewComment] = useState("")
 
   const canManage =
-    user?.role === "founder" || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
+    (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
 
   const { data: task } = useQuery({
     queryKey: ["tasks", taskId],

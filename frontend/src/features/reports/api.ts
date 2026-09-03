@@ -5,6 +5,7 @@ import type {
   EmployeeReportRow,
   LeaveReportRow,
   ProjectReportRow,
+  ReportingManagerRow,
   TaskReportRow,
 } from "@/features/reports/types"
 
@@ -31,4 +32,8 @@ export async function getProjectReport(): Promise<ProjectReportRow[]> {
 
 export async function getEmployeeReport(): Promise<EmployeeReportRow[]> {
   return unwrap<EmployeeReportRow[]>(await supabase.rpc("report_employees"))
+}
+
+export async function getReportingManagerReport(): Promise<ReportingManagerRow[]> {
+  return unwrap<ReportingManagerRow[]>(await supabase.rpc("report_reporting_manager"))
 }

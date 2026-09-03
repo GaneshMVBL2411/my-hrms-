@@ -54,7 +54,7 @@ const typeLabel: Record<CalendarEntryType, string> = {
 export function CalendarPage() {
   const { user } = useAuth()
   const isManager =
-    user?.role === "founder" || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
+    (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
   const [month, setMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [newEventOpen, setNewEventOpen] = useState(false)

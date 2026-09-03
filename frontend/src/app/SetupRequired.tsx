@@ -41,26 +41,26 @@ export function SetupRequired() {
         }}
       >
         <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 600, color: "#18181b" }}>
-          Supabase isn&rsquo;t configured
+          The API server isn&rsquo;t configured
         </h1>
         <p style={{ margin: "0 0 20px" }}>
-          This build has no <code>VITE_SUPABASE_URL</code> or <code>VITE_SUPABASE_ANON_KEY</code>, so it has
-          nothing to connect to.
+          This build has no <code>VITE_API_URL</code>, so it has nothing to connect to. That is the
+          address of the HRMS API server, which holds the connection to the Neon database.
         </p>
 
         <h2 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 600, color: "#18181b" }}>On Vercel</h2>
         <p style={{ margin: "0 0 16px" }}>
-          Add both variables under <strong>Settings &rarr; Environment Variables</strong>, then redeploy.
-          Vite reads them at build time, so an existing deployment will not pick them up until it is rebuilt.
+          Add <code>VITE_API_URL</code> under <strong>Settings &rarr; Environment Variables</strong>, then
+          redeploy. Vite reads it at build time, so an existing deployment will not pick it up until it is
+          rebuilt.
         </p>
 
         <h2 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 600, color: "#18181b" }}>Locally</h2>
         <span style={code}>{"frontend/.env\n\nVITE_SUPABASE_URL=https://<ref>.supabase.co\nVITE_SUPABASE_ANON_KEY=<anon key>"}</span>
 
         <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-          Both values live in your Supabase project under <strong>Settings &rarr; API</strong> and are safe to
-          expose &mdash; the anon key only grants what row level security allows. Never use the{" "}
-          <code>service_role</code> key here.
+          The API server keeps the database credential; this value is only its address, so it is safe to
+          expose. The Neon connection string must never be given to the browser.
         </p>
       </div>
     </div>

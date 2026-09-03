@@ -44,6 +44,8 @@ export interface LetterPayload {
   customMessage: string | null
   companyName: string
   companyAddress: string | null
+  /** The tenant's short code — WPL, PRZ — used in the letter reference line. */
+  companyCode: string | null
   today: string
   generatedAt: string
 }

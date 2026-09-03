@@ -44,21 +44,13 @@ export async function signOut(): Promise<void> {
 }
 
 /**
- * Supabase can change a password from the current session alone, but the form
- * asks for the existing one — so verify it by re-authenticating first, which is
- * what `POST /auth/change-password` used to do server-side.
+ * Changes user password. The current password is verified server-side
+ * before the update is applied, avoiding client-side credential re-auth throttling.
  */
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  const { data: sessionData } = await supabase.auth.getSession()
-  const email = sessionData.session?.user.email
-  if (!email) throw new ApiError("Your session has expired. Sign in again.")
-
-  const { error: verifyError } = await supabase.auth.signInWithPassword({
-    email,
-    password: currentPassword,
+  const { error } = await supabase.auth.updateUser({
+    currentPassword,
+    password: newPassword,
   })
-  if (verifyError) throw new ApiError("Current password is incorrect")
-
-  const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) throw new ApiError(error.message)
 }

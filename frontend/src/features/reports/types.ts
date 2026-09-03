@@ -41,3 +41,23 @@ export interface EmployeeReportRow {
   activeCount: number
   inactiveCount: number
 }
+
+/**
+ * One manager with the people who report to them. Anyone with no reporting
+ * line is grouped under a single "Unassigned" row, which is usually the row
+ * this report is opened to find.
+ */
+export interface ReportingManagerRow {
+  managerId: number | null
+  managerName: string
+  managerDesignation: string
+  departmentName: string
+  teamSize: number
+  inactiveCount: number
+  reports: {
+    employeeId: number
+    fullName: string
+    status: string
+    departmentName: string
+  }[]
+}

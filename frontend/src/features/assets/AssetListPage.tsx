@@ -29,7 +29,7 @@ const statusTone: Record<AssetStatus, "success" | "warning" | "secondary" | "dan
 export function AssetListPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const isManager = user?.role === "founder" || user?.role === "hr_admin"
+  const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
   const [formOpen, setFormOpen] = useState(false)

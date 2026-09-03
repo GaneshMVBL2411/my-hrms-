@@ -5,7 +5,7 @@ import { ComingSoon } from "@/components/shared/ComingSoon"
 import { RoleGuard } from "@/components/shared/RoleGuard"
 import { LoginPage } from "@/features/auth/LoginPage"
 import { ProfilePage } from "@/features/auth/ProfilePage"
-import { DashboardPage } from "@/features/dashboard/DashboardPage"
+import { PlatformHome } from "@/features/platform/PlatformHome"
 import { EmployeeListPage } from "@/features/employees/EmployeeListPage"
 import { EmployeeProfilePage } from "@/features/employees/EmployeeProfilePage"
 import { AttendancePage } from "@/features/attendance/AttendancePage"
@@ -16,9 +16,11 @@ import { TaskListPage } from "@/features/tasks/TaskListPage"
 import { AssetListPage } from "@/features/assets/AssetListPage"
 import { CandidateListPage } from "@/features/recruitment/CandidateListPage"
 import { PayrollPage } from "@/features/payroll/PayrollPage"
+import { CompanyBankPage } from "@/features/banking/CompanyBankPage"
 import { DocumentsPage } from "@/features/documents/DocumentsPage"
 import { CalendarPage } from "@/features/calendar/CalendarPage"
 import { AnnouncementsPage } from "@/features/announcements/AnnouncementsPage"
+import { MessagesPage } from "@/features/messages/MessagesPage"
 import { ReportsPage } from "@/features/reports/ReportsPage"
 import { SettingsPage } from "@/features/settings/SettingsPage"
 import { navItems } from "@/app/nav-config"
@@ -39,7 +41,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: "dashboard", element: <DashboardPage /> },
+          { path: "dashboard", element: <PlatformHome /> },
           { path: "employees", element: <EmployeeListPage /> },
           { path: "employees/:id", element: <EmployeeProfilePage /> },
           { path: "attendance", element: <AttendancePage /> },
@@ -50,9 +52,17 @@ export const router = createBrowserRouter([
           { path: "assets", element: <AssetListPage /> },
           { path: "payroll", element: <PayrollPage /> },
           {
+            path: "company-bank",
+            element: (
+              <RoleGuard roles={["founder", "company_admin", "hr_admin", "accounts_manager"]}>
+                <CompanyBankPage />
+              </RoleGuard>
+            ),
+          },
+          {
             path: "recruitment",
             element: (
-              <RoleGuard roles={["founder", "hr_admin"]}>
+              <RoleGuard roles={["founder", "company_admin", "hr_admin"]}>
                 <CandidateListPage />
               </RoleGuard>
             ),
@@ -60,10 +70,13 @@ export const router = createBrowserRouter([
           { path: "documents", element: <DocumentsPage /> },
           { path: "calendar", element: <CalendarPage /> },
           { path: "announcements", element: <AnnouncementsPage /> },
+          // No RoleGuard: an employee has to reach their own conversations with
+          // HR, and the RLS on `messages` is what limits each side to their own.
+          { path: "messages", element: <MessagesPage /> },
           {
             path: "reports",
             element: (
-              <RoleGuard roles={["founder", "hr_admin"]}>
+              <RoleGuard roles={["founder", "company_admin", "hr_admin"]}>
                 <ReportsPage />
               </RoleGuard>
             ),
@@ -71,7 +84,7 @@ export const router = createBrowserRouter([
           {
             path: "settings",
             element: (
-              <RoleGuard roles={["founder", "hr_admin"]}>
+              <RoleGuard roles={["founder", "company_admin", "hr_admin"]}>
                 <SettingsPage />
               </RoleGuard>
             ),
