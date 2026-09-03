@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { EmailSettingsPanel } from "@/features/settings/EmailSettingsPanel"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   deleteDepartment,
@@ -336,6 +337,7 @@ export function SettingsPage() {
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="designations">Designations</TabsTrigger>
           <TabsTrigger value="roles">Roles & Permissions</TabsTrigger>
+          <TabsTrigger value="email">Email / SMTP</TabsTrigger>
           <TabsTrigger value="audit">Audit Logs</TabsTrigger>
         </TabsList>
 
@@ -351,6 +353,10 @@ export function SettingsPage() {
         <TabsContent value="roles" className="mt-4">
           <RolesTab />
         </TabsContent>
+        <TabsContent value="email" className="mt-4">
+          <EmailSettingsPanel />
+        </TabsContent>
+
         <TabsContent value="audit" className="mt-4">
           <AuditLogsTab />
         </TabsContent>

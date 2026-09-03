@@ -9,20 +9,22 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/tests/phase0.test.ts && tsx src/tests/phase1.test.ts && tsx src/tests/phase2.test.ts && tsx src/tests/rpc-drift.test.ts",
+    "test": "tsx src/tests/phase0.test.ts && tsx src/tests/phase1.test.ts && tsx src/tests/phase2.test.ts && tsx src/tests/rpc-drift.test.ts && tsx src/tests/email.test.ts",
     "test:phase0": "tsx src/tests/phase0.test.ts",
     "test:phase1": "tsx src/tests/phase1.test.ts",
     "test:phase2": "tsx src/tests/phase2.test.ts",
     "test:rpc-drift": "tsx src/tests/rpc-drift.test.ts",
     "db:schema": "psql \"$DATABASE_URL\" -f ../neon/schema.sql",
     "db:check": "tsx src/scripts/check-connection.ts",
-    "db:rpc-drift": "tsx src/scripts/check-rpc-drift.ts"
+    "db:rpc-drift": "tsx src/scripts/check-rpc-drift.ts",
+    "test:email": "tsx src/tests/email.test.ts"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.3.3",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^9.1.1",
     "pg": "^8.13.1"
   },
   "devDependencies": {
@@ -30,6 +32,7 @@
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

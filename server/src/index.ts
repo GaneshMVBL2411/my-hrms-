@@ -21,6 +21,8 @@ import {
   verifyDeviceSignature,
   DeviceAuthError,
 } from "./deviceauth.js"
+import { emailRouter } from "./email/routes.js"
+import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted } from "./email/events.js"
 import {
   loginBlocked,
   recordFailure,
@@ -239,6 +241,24 @@ app.post("/functions/admin-users", requireAuth, adminLimiter, async (req, res) =
         )
         return rows[0]?.create_employee_with_login ?? null
       })
+
+      // Welcomes the new employee with an activation link, never the password
+      // that was just set. Not awaited: the employee exists either way, and a
+      // mail server having a bad afternoon must not fail the creation.
+      if (created !== null && req.user!.companyId !== null) {
+        const details = (employee ?? {}) as Record<string, unknown>
+        onEmployeeCreated({
+          employeeId: created,
+          email,
+          fullName:
+            [details.first_name, details.last_name].filter(Boolean).join(" ") ||
+            String(details.full_name ?? email),
+          employeeCode: (details.employee_code as string | undefined) ?? null,
+          companyId: req.user!.companyId,
+          createdByName: req.user!.email,
+          role: role ?? "employee",
+        })
+      }
 
       return res.json({ employeeId: created })
     }
@@ -481,6 +501,67 @@ const CALLABLE = new Set([
   "start_support_session", "end_support_session",
 ])
 
+/**
+ * Turns a completed RPC into an email, for the handful worth one.
+ *
+ * Deliberately reads the row back instead of trusting the arguments: the
+ * request said "apply for leave from these dates", and what matters to the
+ * employee is the request the database actually stored. Anything thrown here
+ * is swallowed — the leave is applied for either way.
+ */
+async function notifyForRpc(fn: string, result: unknown, req: express.Request): Promise<void> {
+  if (fn !== "apply_leave" && fn !== "decide_leave_request") return
+
+  const id = Number(result)
+  if (!Number.isInteger(id) || req.user!.companyId === null) return
+
+  try {
+    const row = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{
+        employee_id: number
+        leave_type_name: string
+        start_date: string
+        end_date: string
+        days_count: string
+        reason: string | null
+        status: string
+        decision_note: string | null
+        decided_by_name: string | null
+      }>(
+        `select employee_id, leave_type_name, start_date, end_date, days_count,
+                reason, status, decision_note, decided_by_name
+           from public.leave_request_detail where id = $1`,
+        [id]
+      )
+      return rows[0] ?? null
+    })
+    if (!row) return
+
+    const shared = {
+      requestId: id,
+      employeeId: row.employee_id,
+      companyId: req.user!.companyId,
+      leaveType: row.leave_type_name,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      days: row.days_count,
+    }
+
+    if (fn === "apply_leave") {
+      onLeaveSubmitted({ ...shared, reason: row.reason })
+    } else {
+      onLeaveDecided({
+        ...shared,
+        approved: row.status === "approved",
+        decisionNote: row.decision_note,
+        decidedBy: row.decided_by_name ?? undefined,
+      })
+    }
+  } catch (error) {
+    console.error("[email] leave notification skipped:", (error as Error).message)
+  }
+}
+
 app.post("/rpc/:fn", requireAuth, apiLimiter, async (req, res) => {
   const fn = typeof req.params.fn === "string" ? req.params.fn : ""
   if (!CALLABLE.has(fn)) {
@@ -505,6 +586,13 @@ app.post("/rpc/:fn", requireAuth, apiLimiter, async (req, res) => {
       const { rows } = await client.query(`select public.${fn}(${call}) as result`, values)
       return rows[0]?.result ?? null
     })
+
+    // Notifications for the two functions people expect an email from. Read
+    // back from the database rather than from the request body, so the mail
+    // describes what was actually recorded — dates the function normalised, a
+    // day count it worked out — and not what the caller claimed.
+    await notifyForRpc(fn, result, req)
+
     res.json(result)
   } catch (error) {
     // Postgres raises the HRMS's own business rules — "Already checked in
@@ -727,6 +815,13 @@ app.post("/webauthn/punch/:direction", requireAuth, authLimiter, async (req, res
 
 // --------------------------------------------------------- error handling
 // Express's default handler renders an HTML page containing the stack trace,
+// ---------------------------------------------------------------------- email
+// Explicit routes with their own authorisation. Deliberately not reachable
+// through /query: company_email_settings has no grant to this server's database
+// role at all, so SMTP settings cannot be changed by a table write however the
+// query allow-lists evolve.
+app.use(emailRouter)
+
 // which leaks absolute server paths, the dependency layout and the shape of the
 // query that failed. It is also HTML, which every caller here is parsing as
 // JSON — so a database error arrived at the client as a parse failure rather
