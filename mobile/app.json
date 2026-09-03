@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Whhoohh Path HRMS",
+    "slug": "hrms-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/logo-mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.whhoohhpath.hrms",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Face ID confirms it is you checking in or out, so attendance cannot be punched on your behalf.",
+        "NSCameraUsageDescription": "A photo is taken with each check-in and attached to the record, so attendance can be reviewed."
+      }
+    },
+    "android": {
+      "package": "com.whhoohhpath.hrms",
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-mark.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "A photo is taken with each check-in and attached to the record."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Face ID confirms it is you checking in or out."
+        }
+      ]
+    ],
+    "extra": {
+      "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",
+      "//2": "must be a host the device can resolve — the tunnel, or a LAN IP.",
+      "apiUrl": "http://10.0.5.119:5173/api",
+      "eas": {
+        "projectId": "30ae649b-584e-41ca-9131-ec64907b12b8"
+      }
+    },
+    "icon": "./assets/logo-mark.png",
+    "owner": "ganesh_kumar123"
+  }
+}

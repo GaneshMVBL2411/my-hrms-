@@ -1,0 +1,174 @@
+import React, { useEffect, useRef, useState } from "react"
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { WebView } from "react-native-webview"
+import Constants from "expo-constants"
+import { getToken } from "./api"
+import { colors, scale, FONT_SCALE_CAP } from "./ui"
+
+/**
+ * react-native-webview 14.0.1 — the current release — declares its props in a
+ * way React 19's JSX types collapse to `never`, so every prop below is reported
+ * as unassignable. The component itself is fine; only the declaration is behind.
+ *
+ * Aliased once here rather than casting at the call site, so the JSX stays
+ * readable and there is exactly one place to delete when the library catches up.
+ */
+const Web = WebView as unknown as React.ComponentType<Record<string, unknown>>
+
+/**
+ * The rest of the HRMS — dashboard, employees, leaves, projects, tasks,
+ * payroll, reports — served from the same portal the browser uses.
+ *
+ * Rebuilding forty screens in React Native to look at them on a phone would be
+ * a great deal of work to arrive exactly where the web app already is. The web
+ * app is responsive and installs as a PWA, so what the native shell usefully
+ * adds is the hardware sensor at the moment attendance is recorded — which is
+ * the other tab, written natively. This one is the portal itself.
+ *
+ * The one thing worth doing properly here is the session. Signing in natively
+ * and then being asked to sign in again inside the WebView would be absurd, so
+ * the token from the native login is written into the page's localStorage under
+ * the key the web app reads (`hrms_token`, see frontend/src/lib/supabase.ts)
+ * before the first line of app code runs.
+ */
+const PORTAL_URL: string = (
+  (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:3001/api"
+).replace(/\/api\/?$/, "")
+
+export function PortalScreen({ userId }: { userId: number }) {
+  const [token, setToken] = useState<string | null | undefined>(undefined)
+  const [failed, setFailed] = useState(false)
+  const webRef = useRef<WebView | null>(null)
+  const insets = useSafeAreaInsets()
+
+  useEffect(() => {
+    // Re-read on every account change. Read once, this held the token of
+    // whoever signed in first — on a shared phone that is a different person
+    // from the one now looking at the screen.
+    setToken(undefined)
+    getToken().then(setToken)
+  }, [userId])
+
+  if (token === undefined) {
+    return (
+      <View style={styles.centre}>
+        <ActivityIndicator color="#0f4c34" size="large" />
+      </View>
+    )
+  }
+
+  // Runs before the bundle evaluates, so the app's first read of the token
+  // already finds it and the portal opens signed in. The `true;` at the end is
+  // required by react-native-webview: without it the injection can warn on iOS.
+  /**
+   * Hands the WebView this session, and clears the last one first.
+   *
+   * The WebView keeps its own localStorage, and it outlives a sign-out — so
+   * everything the portal had cached for the previous person was still sitting
+   * there when the next person signed in. Overwriting the token was not enough:
+   * anything else the app had stored under that session stayed behind it.
+   *
+   * Cleared only when the token actually differs, so someone reopening their
+   * own portal keeps their place instead of being reset every time.
+   */
+  const injectSession = `
+    (function () {
+      try {
+        var next = ${JSON.stringify(token ?? "")};
+        if (window.localStorage.getItem('hrms_token') !== next) {
+          window.localStorage.clear();
+        }
+        window.localStorage.setItem('hrms_token', next);
+        window.localStorage.setItem('hrms_remember_me', 'true');
+      } catch (e) {}
+    })();
+    true;
+  `
+
+  if (failed) {
+    return (
+      <View style={[styles.centre, { paddingTop: insets.top }]}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.error}>Could not reach the portal.</Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.hint}>{PORTAL_URL}</Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.hint}>
+          Check the tunnel is up and that apiUrl in app.json points at it.
+        </Text>
+        <TouchableOpacity
+          style={styles.retry}
+          onPress={() => {
+            setFailed(false)
+            webRef.current?.reload()
+          }}
+        >
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.retryText}>Try again</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <Web
+        ref={webRef}
+        style={styles.web}
+        source={{ uri: PORTAL_URL, headers: { "ngrok-skip-browser-warning": "1" } }}
+        /**
+         * The reason the portal rendered blank.
+         *
+         * Free ngrok puts an interstitial in front of anything that looks like a
+         * browser. `source.headers` only covers the first request, so the HTML
+         * arrived fine and then every module the SPA imported came back as the
+         * interstitial page instead of JavaScript — the app never booted, and a
+         * WebView showing a page that ran no code is simply white.
+         *
+         * ngrok decides by user agent, and the userAgent prop applies to every
+         * request this WebView makes rather than just the document. Verified:
+         * with this string the page and /@vite/client both return real content;
+         * with a browser UA both return the interstitial.
+         */
+        userAgent="HRMSMobile/1.0"
+        injectedJavaScriptBeforeContentLoaded={injectSession}
+        onError={() => setFailed(true)}
+        onHttpError={(e: { nativeEvent: { url: string } }) => {
+          // 4xx on a sub-resource is normal and not worth a full-screen error;
+          // only a failed main document means the portal did not load.
+          if (e.nativeEvent.url === PORTAL_URL) setFailed(true)
+        }}
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.centre}>
+            <ActivityIndicator color="#0f4c34" size="large" />
+          </View>
+        )}
+        // The portal handles its own scrolling and pull-to-refresh would fight
+        // the routed pages inside it.
+        allowsBackForwardNavigationGestures
+        originWhitelist={["https://*", "http://*"]}
+        javaScriptEnabled
+        domStorageEnabled
+        // Lets the payslip and letter screens open their print/download views.
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+      />
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  // Explicit, because a WebView with no size collapses to nothing and looks
+  // exactly like a page that failed to load.
+  web: { flex: 1, backgroundColor: colors.bg },
+  centre: { flex: 1, alignItems: "center", justifyContent: "center", padding: scale(20), gap: scale(6), backgroundColor: colors.bg },
+  error: { fontSize: scale(15), fontWeight: "600", color: colors.text },
+  hint: { fontSize: scale(12), color: colors.muted, textAlign: "center" },
+  retry: {
+    marginTop: scale(10),
+    backgroundColor: colors.brand,
+    borderRadius: scale(10),
+    paddingHorizontal: scale(18),
+    paddingVertical: scale(12), minHeight: scale(44), justifyContent: "center",
+  },
+  retryText: { color: "#fff", fontWeight: "600", fontSize: scale(14) },
+})
