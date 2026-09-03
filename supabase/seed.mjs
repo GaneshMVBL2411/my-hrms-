@@ -17,6 +17,8 @@
  * Needs Node 18+ for global fetch.
  */
 
+import { randomBytes } from "node:crypto"
+
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/+$/, "")
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 
@@ -88,37 +90,37 @@ const auth = {
 // guessed from a name — HR can fill it in from the employee form.
 const EMPLOYEES = [
   {
-    email: "ravi.shanker@whhohhpath.com", password: "Founder@123",
+    email: "ravi.shanker@whhoohhpath.com",
     firstName: "Ravi", lastName: "Shanker", role: "founder",
     department: "Operations", designation: "Founder & CEO",
     joiningDate: "2021-01-01", gender: "male",
   },
   {
-    email: "hr@whhohhpath.com", password: "HrAdmin@123",
+    email: "hr@whhoohhpath.com",
     firstName: "Bhavya", lastName: "Sri", role: "hr_admin",
     department: "Operations", designation: "HR Executive",
     joiningDate: "2022-03-15",
   },
   {
-    email: "ganesh.pm@whhohhpath.com", password: "Manager@123",
+    email: "ganesh.pm@whhoohhpath.com",
     firstName: "Ganesh", lastName: "", role: "project_manager",
     department: "Engineering", designation: "Software Engineer",
     joiningDate: "2022-06-01",
   },
   {
-    email: "tarak.lead@whhohhpath.com", password: "TeamLead@123",
+    email: "tarak.lead@whhoohhpath.com",
     firstName: "Tarak", lastName: "", role: "team_lead",
     department: "Engineering", designation: "Software Engineer",
     joiningDate: "2022-09-12",
   },
   {
-    email: "pavan.dev@whhohhpath.com", password: "Employee@123",
+    email: "pavan.dev@whhoohhpath.com",
     firstName: "Pavan", lastName: "", role: "employee",
     department: "Engineering", designation: "Software Engineer",
     joiningDate: "2023-02-20",
   },
   {
-    email: "avinash.ai@whhohhpath.com", password: "Employee@123",
+    email: "avinash.ai@whhoohhpath.com",
     firstName: "Avinash", lastName: "", role: "employee",
     department: "AI/ML", designation: "AI Engineer",
     joiningDate: "2023-11-03",
@@ -154,7 +156,8 @@ async function seedEmployees(departments, designations) {
       continue
     }
 
-    const account = await auth.createUser(person.email, person.password)
+    const initialPassword = process.env.INITIAL_EMPLOYEE_PASSWORD ?? randomBytes(16).toString("base64url")
+    const account = await auth.createUser(person.email, initialPassword)
 
     try {
       await rest.rpc("create_employee_profile", {

@@ -1,6 +1,10 @@
 # Minimal config so `supabase link` / `supabase db push` / `supabase functions deploy`
-# work from a clean checkout. `supabase link --project-ref <ref>` fills in project_id.
-project_id = ""
+# work from a clean checkout.
+#
+# project_id must be set even when a command is given --project-ref: the CLI
+# validates this file before it looks at the flag, and an empty value fails with
+# "Missing required field in config: project_id".
+project_id = "qsfoajiumdaxubrxnegg"
 
 [db]
 # Matches the live project (PostgreSQL 17.6).

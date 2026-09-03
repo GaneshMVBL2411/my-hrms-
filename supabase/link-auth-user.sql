@@ -13,7 +13,7 @@
 
 do $$
 declare
-  v_email text := 'hr@whhohhpath.com';
+  v_email text := 'hr@whhoohhpath.com';
   v_role  text := 'hr_admin';   -- founder | hr_admin | project_manager | team_lead | employee
   v_first text := 'Bhavya';
   v_last  text := 'Sri';        -- '' if they go by a single name

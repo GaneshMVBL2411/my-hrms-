@@ -1,17 +1,38 @@
-# Frontend
-frontend/node_modules/
+# Environment and Secret Files
+.env
+.env.*
+*.env
+*.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Backup files and sensitive dumps (contains PAN, Aadhaar, bank details, credentials)
+*.bak
+**/*.bak
+*-bak
+**/*-bak
+backup/
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build artifacts
+dist/
+**/dist/
+server/dist/
 frontend/dist/
-frontend/.env
-frontend/.env.local
+.expo/
 
 # Supabase CLI
 supabase/.branches/
 supabase/.temp/
-.env
 
-# OS / editor
+# OS / editor / logs
 .DS_Store
+Thumbs.db
 *.log
-
-# Data exports — contain PAN, Aadhaar, bank details and password hashes
-backup/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
