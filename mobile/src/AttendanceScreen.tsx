@@ -69,7 +69,16 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
       // means "Set up" starts clean next time instead of signing with a key the
       // server has never seen, which fails in a far more confusing way.
       await forgetDeviceKey(user.id)
-      Alert.alert("Setup failed", (e as Error).message || "Could not set up this device")
+      const message = (e as Error).message || "Could not set up this device"
+      if (message.toLowerCase().includes("not authenticated") || message.toLowerCase().includes("session")) {
+        Alert.alert(
+          "Session Expired",
+          "Your session has expired or your credentials were updated. Please sign in again.",
+          [{ text: "Sign in", onPress: onSignedOut }]
+        )
+      } else {
+        Alert.alert("Setup failed", message)
+      }
     } finally {
       setBusy(null)
     }
@@ -100,6 +109,14 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
       const message = (e as Error).message || ""
       // A dismissed prompt is a decision, not a failure worth alarming someone about.
       if (/cancel|user_cancel|authentication|UserFallback/i.test(message) && !/expired/i.test(message)) {
+        return
+      }
+      if (message.toLowerCase().includes("not authenticated") || message.toLowerCase().includes("session")) {
+        Alert.alert(
+          "Session Expired",
+          "Your session has expired or your credentials were updated. Please sign in again.",
+          [{ text: "Sign in", onPress: onSignedOut }]
+        )
         return
       }
       Alert.alert("Not recorded", message || "Biometric check failed")

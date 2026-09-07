@@ -29,6 +29,12 @@ export class ApiError extends Error {
   }
 }
 
+let unauthorizedHandler: (() => void) | null = null
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler
+}
+
 async function request(path: string, init?: RequestInit): Promise<any> {
   const token = await getToken()
   const res = await fetch(`${API_URL}${path}`, {
@@ -48,7 +54,10 @@ async function request(path: string, init?: RequestInit): Promise<any> {
   const body = text ? safeParse(text) : null
 
   if (!res.ok) {
-    if (res.status === 401) await setToken(null)
+    if (res.status === 401) {
+      await setToken(null)
+      unauthorizedHandler?.()
+    }
     throw new ApiError(body?.error ?? res.statusText, res.status)
   }
   return body

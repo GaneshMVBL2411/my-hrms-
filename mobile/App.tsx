@@ -10,7 +10,7 @@ import { ProfileScreen } from "./src/ProfileScreen"
 import { BrowseScreen } from "./src/BrowseScreen"
 import { PortalScreen } from "./src/PortalScreen"
 import { MessagesScreen } from "./src/MessagesScreen"
-import { me, type SessionUser } from "./src/api"
+import { me, setUnauthorizedHandler, type SessionUser } from "./src/api"
 import { colors, scale, FONT_SCALE_CAP } from "./src/ui"
 
 /**
@@ -72,11 +72,18 @@ function Shell() {
   const insets = useSafeAreaInsets()
 
   useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      setTab("home")
+    })
+
     // A stored token survives a restart, so the app opens on the punch screen
     // rather than asking someone to sign in every morning.
     me()
       .then(setUser)
       .finally(() => setChecking(false))
+
+    return () => setUnauthorizedHandler(null)
   }, [])
 
   if (checking) {

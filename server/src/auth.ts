@@ -47,6 +47,7 @@ export interface AuthenticatedUser extends SessionContext {
   role: string
   employeeId: number | null
   isSuperAdmin: boolean
+  tokenVersion?: number
 }
 
 declare global {
@@ -99,6 +100,12 @@ export async function verifyCredentials(
 
     await client.query("select public.record_sign_in($1)", [row.user_id])
 
+    const sessionRes = await client.query<{ token_version: number | null }>(
+      "select coalesce(token_version, 1) as token_version from public.resolve_session($1)",
+      [row.user_id]
+    )
+    const tokenVersion = sessionRes.rows[0]?.token_version ?? 1
+
     return {
       userId: row.user_id,
       companyId: row.company_id,
@@ -106,6 +113,7 @@ export async function verifyCredentials(
       role: row.role,
       employeeId: row.employee_id,
       isSuperAdmin: row.company_id === null && row.role === "super_admin",
+      tokenVersion,
     }
   })
 }
@@ -186,11 +194,12 @@ export function revokeRequestToken(req: Request): void {
   }
 }
 
-export function issueToken(user: AuthenticatedUser, tokenVersion = 1): string {
+export function issueToken(user: AuthenticatedUser, tokenVersion?: number): string {
+  const version = tokenVersion ?? user.tokenVersion ?? 1
   const payload: TokenPayload = {
     userId: user.userId,
     jti: randomUUID(),
-    version: tokenVersion,
+    version,
   }
   const options: jwt.SignOptions = {
     expiresIn: JWT_TTL as jwt.SignOptions["expiresIn"],
@@ -241,7 +250,7 @@ export async function resolveUser(token: string): Promise<AuthenticatedUser | nu
     if (!row) return null
 
     // Check if token was issued prior to a password change
-    if (row.password_changed_at && payload.iat) {
+    if (row.password_changed_at && payload.iat && (!payload.version || payload.version < (row.token_version ?? 1))) {
       const changedSec = Math.floor(new Date(row.password_changed_at).getTime() / 1000)
       if (payload.iat < changedSec) {
         return null
