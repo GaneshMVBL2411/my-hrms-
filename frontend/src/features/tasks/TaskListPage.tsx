@@ -16,11 +16,15 @@ import type { Priority, TaskStatus } from "@/features/tasks/types"
 
 const PAGE_SIZE = 20
 
-const statusTone: Record<TaskStatus, "secondary" | "warning" | "default" | "success"> = {
+const statusTone: Record<TaskStatus, "secondary" | "warning" | "default" | "success" | "danger"> = {
+  todo: "secondary",
+  to_do: "secondary",
   assigned: "secondary",
   in_progress: "warning",
   review: "default",
   completed: "success",
+  on_hold: "warning",
+  cancelled: "danger",
 }
 
 const priorityTone: Record<Priority, "danger" | "warning" | "secondary"> = {
@@ -85,10 +89,12 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="assigned">Assigned</SelectItem>
+              <SelectItem value="todo">To Do</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
               <SelectItem value="review">Review</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
           {isManagerTier && (

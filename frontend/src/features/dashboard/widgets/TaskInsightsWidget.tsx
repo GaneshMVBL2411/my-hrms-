@@ -8,10 +8,14 @@ import { getMyAttendance } from "@/features/attendance/api"
 import type { TaskStatus } from "@/features/tasks/types"
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
+  todo: "To Do",
+  to_do: "To Do",
   assigned: "Assigned",
   in_progress: "In Progress",
   review: "Review",
   completed: "Completed",
+  on_hold: "On Hold",
+  cancelled: "Cancelled",
 }
 
 export function TaskInsightsWidget({ employeeId }: { employeeId?: number }) {

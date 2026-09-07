@@ -13,7 +13,7 @@ import type {
 } from "@/features/tasks/types"
 
 const SUMMARY_COLUMNS =
-  "id, title, project_id, project_name, assigned_to, assignee_name, priority, due_date, status, progress"
+  "id, title, project_id, project_name, assigned_to, assignee_name, priority, due_date, status, progress, is_active, project_stage, start_date, end_date, task_file_url, task_file_name, task_managers, task_members"
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, description, created_at`
 
 const SORT_COLUMNS: Record<string, string> = {
@@ -87,10 +87,18 @@ export async function createTask(payload: TaskCreate): Promise<Task> {
           description: payload.description,
           project_id: payload.projectId,
           assigned_to: payload.assignedTo,
-          priority: payload.priority,
-          due_date: payload.dueDate,
-          status: payload.status,
-          progress: payload.progress,
+          priority: payload.priority ?? "medium",
+          due_date: payload.dueDate || payload.endDate,
+          status: payload.status ?? "todo",
+          progress: payload.progress ?? 0,
+          is_active: payload.isActive ?? true,
+          project_stage: payload.projectStage ?? "Todo",
+          start_date: payload.startDate,
+          end_date: payload.endDate,
+          task_file_url: payload.taskFileUrl,
+          task_file_name: payload.taskFileName,
+          task_managers: payload.taskManagers ?? [],
+          task_members: payload.taskMembers ?? [],
         })
       )
       .select("id")

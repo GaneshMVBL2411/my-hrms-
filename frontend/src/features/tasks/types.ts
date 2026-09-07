@@ -1,5 +1,13 @@
 export type Priority = "low" | "medium" | "high"
-export type TaskStatus = "assigned" | "in_progress" | "review" | "completed"
+export type TaskStatus =
+  | "todo"
+  | "to_do"
+  | "assigned"
+  | "in_progress"
+  | "review"
+  | "completed"
+  | "on_hold"
+  | "cancelled"
 
 export interface TaskSummary {
   id: number
@@ -12,6 +20,14 @@ export interface TaskSummary {
   dueDate: string | null
   status: TaskStatus
   progress: number
+  isActive?: boolean
+  projectStage?: string
+  startDate?: string | null
+  endDate?: string | null
+  taskFileUrl?: string | null
+  taskFileName?: string | null
+  taskManagers?: number[]
+  taskMembers?: number[]
 }
 
 export interface TaskChecklistItem {
@@ -40,10 +56,18 @@ export interface TaskCreate {
   description?: string
   projectId?: number
   assignedTo?: number
-  priority: Priority
+  priority?: Priority
   dueDate?: string
-  status: TaskStatus
+  status?: TaskStatus
   progress?: number
+  isActive?: boolean
+  projectStage?: string
+  startDate?: string
+  endDate?: string
+  taskFileUrl?: string
+  taskFileName?: string
+  taskManagers?: number[]
+  taskMembers?: number[]
 }
 
 export interface TaskUpdate {
@@ -55,6 +79,14 @@ export interface TaskUpdate {
   dueDate?: string
   status?: TaskStatus
   progress?: number
+  isActive?: boolean
+  projectStage?: string
+  startDate?: string | null
+  endDate?: string | null
+  taskFileUrl?: string | null
+  taskFileName?: string | null
+  taskManagers?: number[]
+  taskMembers?: number[]
 }
 
 export interface PaginatedTasks {
