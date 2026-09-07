@@ -121,6 +121,8 @@ export interface SectionDef {
 
 /** The order a task moves through, so "next" is a single obvious step. */
 const TASK_FLOW: Record<string, string> = {
+  todo: "in_progress",
+  to_do: "in_progress",
   assigned: "in_progress",
   in_progress: "review",
   review: "completed",
@@ -146,7 +148,10 @@ const statusTone: Record<string, Tone> = {
   in_progress: "warning",
   review: "warning",
   assigned: "neutral",
+  todo: "neutral",
+  to_do: "neutral",
   rejected: "danger",
+  cancelled: "danger",
   // attendance
   present: "success",
   half_day: "warning",
