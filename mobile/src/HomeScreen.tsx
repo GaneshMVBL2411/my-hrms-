@@ -23,7 +23,7 @@ export function HomeScreen({
   onOpenProfile,
 }: {
   user: SessionUser
-  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance") => void
+  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies") => void
   onOpenProfile: () => void
 }) {
   const [today, setToday] = useState<TodayRecord | null>(null)
@@ -160,6 +160,40 @@ export function HomeScreen({
           onPress={() => onGo("tasks")}
         />
       </View>
+
+      {(user.role === "hr_admin" || user.role === "founder" || user.role === "company_admin") && (
+        <>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sectionLabel}>
+            HR Portal & Operations
+          </Text>
+          <View style={styles.actions}>
+            <Action
+              icon="ribbon-outline"
+              tint="#d97706"
+              label="Issue Letter"
+              onPress={() => onGo("issue-letter")}
+            />
+            <Action
+              icon="checkmark-done-circle-outline"
+              tint="#16a34a"
+              label="Approve Leaves"
+              onPress={() => onGo("leaves")}
+            />
+            <Action
+              icon="git-network-outline"
+              tint="#6366f1"
+              label="Reporting"
+              onPress={() => onGo("reporting")}
+            />
+            <Action
+              icon="document-text-outline"
+              tint="#0ea5e9"
+              label="Policies"
+              onPress={() => onGo("policies")}
+            />
+          </View>
+        </>
+      )}
 
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sectionLabel}>
         Quick actions

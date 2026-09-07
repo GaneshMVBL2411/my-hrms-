@@ -1,4 +1,4 @@
-# Whhohh Path HRMS
+# Whhoohh Path HRMS
 
 A React SPA that talks straight to Supabase. There is no application server: the
 database enforces every rule through row level security and a set of SQL
@@ -47,7 +47,7 @@ SUPABASE_SERVICE_KEY=<service_role key> \
 node supabase/seed.mjs
 ```
 
-Creates the six Whhohh Path accounts, their leave balances and salary
+Creates the six Whhoohh Path accounts, their leave balances and salary
 structures, plus a sample project, policies and announcements. It prints the
 credentials it created when it finishes.
 

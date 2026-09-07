@@ -66,6 +66,7 @@ function Shell() {
   const [checking, setChecking] = useState(true)
   const [tab, setTab] = useState<Tab>("home")
   const [browseKey, setBrowseKey] = useState<string | null>(null)
+  const [browseAction, setBrowseAction] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const insets = useSafeAreaInsets()
@@ -114,7 +115,13 @@ function Shell() {
             onOpenProfile={() => setProfileOpen(true)}
             onGo={(t) => {
               if (t === "punch") return setTab("punch")
+              if (t === "issue-letter") {
+                setBrowseKey("letters")
+                setBrowseAction(true)
+                return setTab("browse")
+              }
               setBrowseKey(t === "browse" ? null : t)
+              setBrowseAction(false)
               setTab("browse")
             }}
           />
@@ -129,7 +136,15 @@ function Shell() {
           style={[styles.page, tab !== "browse" && styles.hidden]}
           pointerEvents={tab === "browse" ? "auto" : "none"}
         >
-          <BrowseScreen user={user} jumpTo={browseKey} onJumped={() => setBrowseKey(null)} />
+          <BrowseScreen
+            user={user}
+            jumpTo={browseKey}
+            initialAction={browseAction}
+            onJumped={() => {
+              setBrowseKey(null)
+              setBrowseAction(false)
+            }}
+          />
         </View>
         <View
           style={[styles.page, tab !== "chat" && styles.hidden]}

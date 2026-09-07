@@ -90,6 +90,29 @@ export async function me(): Promise<SessionUser | null> {
   return request("/auth/me").catch(() => null)
 }
 
+/**
+ * Asks for a password reset link to be emailed.
+ *
+ * The server answers the same way whether or not the address has an account,
+ * and this returns that answer verbatim rather than adding a cheerier one. That
+ * is not politeness: an app that said "no such user" would let anyone turn this
+ * screen into a check for whether a given person works here, which is the list
+ * a phishing campaign starts from. So the screen cannot promise the mail is
+ * coming, and does not.
+ *
+ * No token is sent back — the emailed link is the only copy — so the app's part
+ * ends here and the reset itself is finished from the link.
+ */
+export async function requestPasswordReset(email: string): Promise<string> {
+  const body = await request("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email: email.trim() }),
+  })
+  return (
+    body?.message ?? "If that address has an account, a reset link is on its way."
+  )
+}
+
 export interface TodayRecord {
   id: number
   date: string
@@ -345,5 +368,104 @@ export async function markThreadRead(userId: number): Promise<void> {
         { column: "read_at", op: "is", value: null },
       ],
     }),
+  })
+}
+
+export type LetterType =
+  | "offer"
+  | "appointment"
+  | "joining"
+  | "experience"
+  | "relieving"
+  | "certificate"
+  | "internship"
+  | "promotion"
+  | "appraisal"
+  | "confirmation"
+  | "warning"
+  | "termination"
+
+/**
+ * A letter with every field the document needs already resolved.
+ *
+ * snake_case, unlike the web app's equivalent type. The wire format is the
+ * database's own column names; the portal camelCases on the way in and this app
+ * does not, and inventing a camelCase type here would mean a conversion layer
+ * that exists for one screen. Every other row the phone reads is snake_case
+ * too, so this is the consistent choice rather than the lazy one.
+ *
+ * `annual_ctc` arrives as a numeric, which node-postgres hands back as a string
+ * to avoid losing precision — hence the union. Nothing here does arithmetic on
+ * it; it is formatted for display and that is all.
+ */
+export interface LetterPayload {
+  id: number
+  letter_type: LetterType
+  employee_name: string
+  employee_code: string
+  employee_address: string | null
+  designation_title: string | null
+  department_name: string | null
+  joining_date: string | null
+  reporting_manager_name: string | null
+  annual_ctc: number | string | null
+  probation_text: string | null
+  notice_period_text: string | null
+  custom_message: string | null
+  company_name: string
+  company_address: string | null
+  /** The tenant's short code — WPL, PRZ — used in the letter reference line. */
+  company_code: string | null
+  today: string
+  generated_at: string
+}
+
+export interface LetterRequest {
+  employeeId: number
+  letterType: LetterType
+  customMessage?: string
+  annualCtc?: number
+  probationText?: string
+  noticePeriodText?: string
+}
+
+/**
+ * Issues a letter and returns it, ready to render.
+ *
+ * generate_letter records the letter and resolves the payload in one call, so
+ * there is no window in which a letter exists but cannot be shown. It also
+ * checks the caller is HR and that the employee belongs to their company — the
+ * Generate button is hidden for everyone else, but that is a courtesy, not the
+ * control. An unset CTC is sent as null rather than omitted, which is what
+ * makes the function fall back to the employee's salary structure.
+ */
+export async function generateLetter(req: LetterRequest): Promise<LetterPayload> {
+  return rpc<LetterPayload>("generate_letter", {
+    p_employee_id: req.employeeId,
+    p_letter_type: req.letterType,
+    p_custom_message: req.customMessage?.trim() || null,
+    p_annual_ctc: req.annualCtc ?? null,
+    p_probation_text: req.probationText?.trim() || null,
+    p_notice_period_text: req.noticePeriodText?.trim() || null,
+  })
+}
+
+/** Re-opens a letter from the history. Refused unless it is yours or you are HR. */
+export async function viewLetter(id: number): Promise<LetterPayload> {
+  return rpc<LetterPayload>("get_letter_view", { p_id: id })
+}
+
+export interface EmployeeOption {
+  id: number
+  full_name: string
+  designation_title: string | null
+}
+
+/** Who a letter can be issued to — the same directory the People list reads. */
+export async function employeeOptions(): Promise<EmployeeOption[]> {
+  return select<EmployeeOption>("employee_directory", {
+    columns: "id, full_name, designation_title",
+    order: [{ column: "full_name", ascending: true }],
+    limit: 500,
   })
 }

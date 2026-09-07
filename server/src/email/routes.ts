@@ -335,7 +335,18 @@ emailRouter.post("/auth/reset-password", resetLimiter, async (req, res) => {
     // The policy failure is worth passing through — someone choosing a new
     // password needs to know why it was refused. Everything else collapses to
     // one message, so a stolen link cannot be probed for its state.
-    if (err.code === "P0001" && err.message?.toLowerCase().includes("password")) {
+    //
+    // 22023 is what assert_password_policy actually raises (invalid parameter
+    // value); P0001 is kept because a policy check added with a bare RAISE
+    // would land there. Without 22023 every rejected password was reported as
+    // "This reset link is no longer valid", which sends someone with a perfectly
+    // good link off to request another one — and the next password they choose
+    // is rejected the same way. The token is spent only on success, so the link
+    // does still work; the message was the only thing wrong.
+    const isPolicyFailure =
+      (err.code === "22023" || err.code === "P0001") &&
+      err.message?.toLowerCase().includes("password")
+    if (isPolicyFailure) {
       return res.status(400).json({ error: err.message })
     }
     res.status(400).json({ error: "This reset link is no longer valid" })

@@ -6,6 +6,7 @@
 **/.env
 **/.env.*
 !**/.env.example
+server/set-test-passwords.mjs
 
 # Backup files and sensitive dumps (contains PAN, Aadhaar, bank details, credentials)
 *.bak

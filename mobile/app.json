@@ -5,12 +5,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/logo-mark.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.whhoohhpath.hrms",
@@ -45,12 +39,23 @@
         {
           "faceIDPermission": "Face ID confirms it is you checking in or out."
         }
+      ],
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo-mark.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
       ]
     ],
     "extra": {
       "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",
       "//2": "must be a host the device can resolve — the tunnel, or a LAN IP.",
-      "apiUrl": "http://10.0.5.119:5173/api",
+      "apiUrl": "http://10.0.5.122:5173/api",
       "eas": {
         "projectId": "30ae649b-584e-41ca-9131-ec64907b12b8"
       }

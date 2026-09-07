@@ -22,16 +22,29 @@ import type { LetterPayload, LetterType, Policy } from "@/features/documents/typ
 
 const letterTypes: { value: LetterType; label: string }[] = [
   { value: "offer", label: "Offer Letter" },
-  // Labelled for both names it goes by — it is issued on joining and is what
-  // people mean when they ask HR for a "joining letter".
-  { value: "appointment", label: "Appointment / Joining Letter" },
-  { value: "experience", label: "Experience Letter" },
+  { value: "joining", label: "Joining Letter (Reporting for Duty)" },
+  { value: "appointment", label: "Appointment Letter" },
+  { value: "confirmation", label: "Probation Confirmation Letter" },
+  { value: "promotion", label: "Promotion & Increment Letter" },
+  { value: "appraisal", label: "Annual Salary Revision / Appraisal" },
+  { value: "internship", label: "Internship Offer & Engagement Letter" },
+  { value: "experience", label: "Experience Certificate" },
   { value: "relieving", label: "Relieving Letter" },
-  { value: "certificate", label: "Certificate of Employment" },
+  { value: "certificate", label: "Certificate of Employment (Active Verification)" },
+  { value: "warning", label: "Formal Warning Notice" },
+  { value: "termination", label: "Letter of Separation / Termination" },
 ]
 
-/** The two letters that state commercial terms, and so collect them on the form. */
-const TERMS_LETTER_TYPES: LetterType[] = ["offer", "appointment"]
+/** Letters that state commercial terms, and so collect them on the form. */
+const TERMS_LETTER_TYPES: LetterType[] = [
+  "offer",
+  "joining",
+  "appointment",
+  "confirmation",
+  "promotion",
+  "appraisal",
+  "internship",
+]
 
 function statesTerms(letterType: LetterType) {
   return TERMS_LETTER_TYPES.includes(letterType)

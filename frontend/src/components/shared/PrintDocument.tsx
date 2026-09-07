@@ -10,7 +10,7 @@ import { CompanyLogo } from "@/features/auth/CompanyLogo"
  * coloured rule beneath, the body, and a footer band with contact details.
  *
  * Everything that was a fixed colour is now the tenant's own, so a Prozonic
- * offer letter arrives in Prozonic teal and a Whhohh Path one in green. Getting
+ * offer letter arrives in Prozonic teal and a Whhoohh Path one in green. Getting
  * this wrong is not a cosmetic problem — a letter is the most external thing
  * the HRMS produces, and it goes out under the customer's name.
  */

@@ -32,12 +32,12 @@ select
   p.net_pay
 from public.payslips p
 join public.employees e on e.id = p.employee_id
-where (p.year, p.month) in ((2026, 7), (2026, 8), (2026, 9))
+where (p.year, p.month) in ((2026, 1), (2026, 8), (2026, 9))
 order by p.year, p.month, p.employee_id;
 
 
 delete from public.payslips
-where (year, month) in ((2026, 7), (2026, 8), (2026, 9));
+where (year, month) in ((2026, 1), (2026, 8), (2026, 9));
 
 
 -- ------------------------------------------------------------- diagnostics

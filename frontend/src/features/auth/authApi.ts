@@ -1,4 +1,4 @@
-import { supabase, setRememberMe } from "@/lib/supabase"
+import { supabase, setRememberMe, apiRequest } from "@/lib/supabase"
 import { ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { logAudit } from "@/lib/query"
@@ -53,4 +53,38 @@ export async function changePassword(currentPassword: string, newPassword: strin
     password: newPassword,
   })
   if (error) throw new ApiError(error.message)
+}
+
+// ----------------------------------------------------------- password reset
+/**
+ * Asks for a reset link to be emailed.
+ *
+ * Returns the server's own wording rather than a message of our own. The
+ * endpoint answers identically whether or not the address has an account, and
+ * paraphrasing it here — "Sent!" — would put back the confirmation it withholds
+ * on purpose: an answer that differs by whether the address exists is a way to
+ * enumerate everyone who works here.
+ */
+export async function requestPasswordReset(email: string): Promise<string> {
+  const body = await apiRequest("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email: email.trim() }),
+  })
+  return body?.message ?? "If that address has an account, a reset link is on its way."
+}
+
+/**
+ * Spends an emailed token and sets the new password.
+ *
+ * Deliberately not authenticated: someone resetting a password is by definition
+ * unable to sign in, and the token is the credential. Every failure but a
+ * rejected password comes back as one message, so a stolen link cannot be
+ * probed for whether it is unknown, expired or already spent.
+ */
+export async function resetPassword(token: string, password: string): Promise<string> {
+  const body = await apiRequest("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  })
+  return body?.message ?? "Your password has been changed. Please sign in."
 }

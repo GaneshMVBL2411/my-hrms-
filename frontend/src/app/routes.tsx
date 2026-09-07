@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/shared/ProtectedRoute"
 import { ComingSoon } from "@/components/shared/ComingSoon"
 import { RoleGuard } from "@/components/shared/RoleGuard"
 import { LoginPage } from "@/features/auth/LoginPage"
+import { ResetPasswordPage } from "@/features/auth/ResetPasswordPage"
 import { ProfilePage } from "@/features/auth/ProfilePage"
 import { PlatformHome } from "@/features/platform/PlatformHome"
 import { EmployeeListPage } from "@/features/employees/EmployeeListPage"
@@ -34,6 +35,10 @@ const placeholderRoutes = navItems
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  // Public, and above ProtectedRoute: this is where a password-reset email
+  // lands, and its visitor is by definition signed out. Under the guard they
+  // would be bounced to /login and the link would appear broken.
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/", element: <Navigate to="/dashboard" replace /> },
   {
     element: <ProtectedRoute />,

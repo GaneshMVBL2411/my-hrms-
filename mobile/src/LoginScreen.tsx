@@ -2,6 +2,7 @@ import { useRef, useState } from "react"
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { login, type SessionUser } from "./api"
+import { login, requestPasswordReset, type SessionUser } from "./api"
 import { colors, scale, FONT_SCALE_CAP } from "./ui"
 import { Logo } from "./Logo"
 
@@ -22,6 +23,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [forgotOpen, setForgotOpen] = useState(false)
   // Without this the email field's "next" key has nothing to move to, and the
   // password field can only be reached by tapping it — which is impossible when
   // the keyboard is covering it. Both values then end up in the email box.
@@ -152,8 +154,151 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
             </Text>
           )}
         </TouchableOpacity>
+
+        {/* Below the button rather than beside the password field: this is the
+            way out of a dead end, not a second thing to choose between. */}
+        <TouchableOpacity
+          style={styles.forgotButton}
+          onPress={() => setForgotOpen(true)}
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.forgotText}>
+            Forgot password?
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {forgotOpen && (
+        // Seeded with whatever is already in the email box, which is almost
+        // always the address they want — someone taps this after a failed
+        // sign-in, and retyping it on a phone keyboard is where typos come from.
+        <ForgotPassword initialEmail={email} onClose={() => setForgotOpen(false)} />
+      )}
     </KeyboardAvoidingView>
+  )
+}
+
+/**
+ * Asks for a reset link.
+ *
+ * It cannot say whether the address exists, so it does not try — the server
+ * answers identically either way, on purpose, and a screen that claimed "sent!"
+ * would be inventing a confirmation the server deliberately withheld. What it
+ * can do is be clear about what happens next, which is that the link arrives by
+ * email and is opened there.
+ *
+ * The reset itself is finished on that link rather than here. The token is
+ * emailed and never returned to a client, so an in-app "enter the code" step
+ * would need somewhere to get the code from; the link already goes to the
+ * portal's reset page, which is one implementation of the form rather than two.
+ */
+function ForgotPassword({
+  initialEmail,
+  onClose,
+}: {
+  initialEmail: string
+  onClose: () => void
+}) {
+  const [email, setEmail] = useState(initialEmail)
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    const address = email.trim()
+    if (!address || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      setSent(await requestPasswordReset(address))
+    } catch (e) {
+      // The only failures that reach here are transport ones — an unreachable
+      // server, or the rate limiter — since the endpoint answers 200 for both a
+      // known and an unknown address.
+      setError((e as Error).message || "Could not reach the server")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={styles.sheet}>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetTitle}>
+            {sent ? "Check your email" : "Reset your password"}
+          </Text>
+
+          {sent ? (
+            <>
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetBody}>
+                {sent}
+              </Text>
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetHint}>
+                Open the link on this phone to choose a new password. It expires in
+                30 minutes, and using it signs you out everywhere.
+              </Text>
+              <TouchableOpacity
+                style={[styles.sheetBtn, styles.sheetPrimary, styles.sheetSoleBtn]}
+                onPress={onClose}
+              >
+                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetPrimaryText}>
+                  Done
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetBody}>
+                Enter your work email and we will send you a link to set a new
+                password.
+              </Text>
+              <TextInput
+                style={[styles.input, { marginTop: scale(12) }]}
+                placeholder="you@whhoohhpath.com"
+                placeholderTextColor={colors.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+                returnKeyType="send"
+                autoFocus
+                value={email}
+                onChangeText={setEmail}
+                onSubmitEditing={submit}
+                maxFontSizeMultiplier={FONT_SCALE_CAP}
+              />
+              {error && (
+                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.error}>
+                  {error}
+                </Text>
+              )}
+              <View style={styles.sheetButtons}>
+                <TouchableOpacity style={[styles.sheetBtn, styles.sheetGhost]} onPress={onClose}>
+                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetGhostText}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sheetBtn, styles.sheetPrimary, (busy || !email.trim()) && styles.buttonDisabled]}
+                  disabled={busy || !email.trim()}
+                  onPress={submit}
+                >
+                  {busy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetPrimaryText}>
+                      Send link
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
   )
 }
 
@@ -199,4 +344,37 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: "#fff", fontSize: scale(16), fontWeight: "600" },
   error: { color: colors.danger, marginBottom: scale(6), fontSize: scale(13) },
+
+  // ----------------------------------------------------- forgot password
+  forgotButton: { alignSelf: "center", marginTop: scale(16), paddingVertical: scale(6) },
+  forgotText: { color: colors.brand, fontSize: scale(14), fontWeight: "600" },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "center",
+    padding: scale(20),
+  },
+  sheet: {
+    backgroundColor: colors.card,
+    borderRadius: scale(14),
+    padding: scale(18),
+  },
+  sheetTitle: { fontSize: scale(17), fontWeight: "700", color: colors.text },
+  sheetBody: { fontSize: scale(13.5), lineHeight: scale(20), color: colors.muted, marginTop: scale(8) },
+  sheetHint: { fontSize: scale(12), lineHeight: scale(18), color: colors.faint, marginTop: scale(10) },
+  sheetButtons: { flexDirection: "row", gap: scale(10), marginTop: scale(14) },
+  sheetBtn: {
+    flex: 1,
+    borderRadius: scale(10),
+    minHeight: scale(46),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // The confirmation has one button rather than a row, so it carries the gap
+  // that `sheetButtons` provides for the pair.
+  sheetSoleBtn: { marginTop: scale(16) },
+  sheetGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  sheetGhostText: { color: colors.text, fontWeight: "600", fontSize: scale(14) },
+  sheetPrimary: { backgroundColor: colors.brand },
+  sheetPrimaryText: { color: "#fff", fontWeight: "700", fontSize: scale(14) },
 })

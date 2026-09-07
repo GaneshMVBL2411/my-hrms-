@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/features/auth/AuthContext"
 import { errorMessage } from "@/lib/errors"
 import { AnimatedLogo } from "@/components/shared/AnimatedLogo"
+import { ForgotPasswordDialog } from "@/features/auth/ForgotPasswordDialog"
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email"),
@@ -26,6 +27,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showPassword, setShowPassword] = useState(false)
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   const {
     register,
@@ -131,7 +133,7 @@ export function LoginPage() {
               </label>
               <button
                 type="button"
-                onClick={() => toast.info("Contact your HR admin to reset your password.")}
+                onClick={() => setForgotOpen(true)}
                 className="text-sm font-medium text-primary hover:underline"
               >
                 Forgot password?
@@ -145,6 +147,12 @@ export function LoginPage() {
           </form>
         </div>
       </div>
+
+      <ForgotPasswordDialog
+        open={forgotOpen}
+        onOpenChange={setForgotOpen}
+        defaultEmail={watch("email")}
+      />
     </div>
   )
 }

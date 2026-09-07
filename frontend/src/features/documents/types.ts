@@ -1,4 +1,16 @@
-export type LetterType = "offer" | "appointment" | "experience" | "relieving" | "certificate"
+export type LetterType =
+  | "offer"
+  | "appointment"
+  | "joining"
+  | "experience"
+  | "relieving"
+  | "certificate"
+  | "internship"
+  | "promotion"
+  | "appraisal"
+  | "confirmation"
+  | "warning"
+  | "termination"
 
 export interface Policy {
   id: number

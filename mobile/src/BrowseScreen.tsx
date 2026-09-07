@@ -15,7 +15,8 @@ import {
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
-import { applyLeave, leaveTypes, rpc, select, type LeaveType, type SessionUser } from "./api"
+import { applyLeave, leaveTypes, rpc, select, type LeaveType, type LetterPayload, type SessionUser } from "./api"
+import { GenerateLetterSheet, LetterDocumentModal } from "./LetterScreen"
 import { SECTIONS, type RowAction, type RowView, type SectionDef, type Tone } from "./sections"
 import { colors, scale, FONT_SCALE_CAP } from "./ui"
 import { play, transformFor, MOTION_MS } from "./motion"
@@ -38,14 +39,17 @@ import { play, transformFor, MOTION_MS } from "./motion"
 export function BrowseScreen({
   user,
   jumpTo,
+  initialAction,
   onJumped,
 }: {
   user: SessionUser
   /** A section key to open straight away, set when Home routes here. */
   jumpTo?: string | null
+  initialAction?: boolean
   onJumped?: () => void
 }) {
   const [open, setOpen] = useState<SectionDef | null>(null)
+  const [triggerAction, setTriggerAction] = useState(false)
   const insets = useSafeAreaInsets()
 
   // Home's quick actions name a destination rather than just this tab, so
@@ -54,11 +58,26 @@ export function BrowseScreen({
   // the section would immediately re-open it.
   useEffect(() => {
     if (!jumpTo) return
-    setOpen(SECTIONS.find((s) => s.key === jumpTo) ?? null)
+    const target = SECTIONS.find((s) => s.key === jumpTo) ?? null
+    setOpen(target)
+    if (initialAction) setTriggerAction(true)
     onJumped?.()
-  }, [jumpTo, onJumped])
+  }, [jumpTo, initialAction, onJumped])
 
-  if (open) return <SectionList section={open} user={user} onBack={() => setOpen(null)} />
+  if (open) {
+    return (
+      <SectionList
+        section={open}
+        user={user}
+        initialActionOpen={triggerAction}
+        onActionOpened={() => setTriggerAction(false)}
+        onBack={() => {
+          setOpen(null)
+          setTriggerAction(false)
+        }}
+      />
+    )
+  }
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + scale(12) }]}>
@@ -131,19 +150,39 @@ function ModuleTile({ section, onOpen }: { section: SectionDef; onOpen: () => vo
 function SectionList({
   section,
   user,
+  initialActionOpen,
+  onActionOpened,
   onBack,
 }: {
   section: SectionDef
   user: SessionUser
+  initialActionOpen?: boolean
+  onActionOpened?: () => void
   onBack: () => void
 }) {
   const [rows, setRows] = useState<Record<string, any>[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState("")
-  const [applyOpen, setApplyOpen] = useState(false)
+  const [actionOpen, setActionOpen] = useState(initialActionOpen ?? false)
+
+  useEffect(() => {
+    if (initialActionOpen) {
+      setActionOpen(true)
+      onActionOpened?.()
+    }
+  }, [initialActionOpen, onActionOpened])
   /** The row and action waiting on a written note, if one is being asked for. */
   const [asking, setAsking] = useState<{ row: Record<string, any>; action: RowAction } | null>(null)
+  /**
+   * The letter being read: an id from the history, or one just generated.
+   *
+   * Two fields rather than one because they arrive differently — a row tap has
+   * only an id and has to fetch, while a freshly generated letter is already in
+   * hand and re-fetching it would be a round trip to learn what was just said.
+   */
+  const [openLetterId, setOpenLetterId] = useState<number | null>(null)
+  const [freshLetter, setFreshLetter] = useState<LetterPayload | null>(null)
   const insets = useSafeAreaInsets()
 
   const load = useCallback(async () => {
@@ -194,6 +233,14 @@ function SectionList({
     raw: r,
     actions: section.rowActions?.(r) ?? [],
   }))
+  // A screen action may be for HR only, so the button is dropped for anyone
+  // else. The database refuses regardless; this stops offering a dead end.
+  const screenAction =
+    section.screenAction &&
+    (!section.screenAction.roles || section.screenAction.roles.includes(user.role))
+      ? section.screenAction
+      : null
+
   const needle = search.trim().toLowerCase()
   const shown = needle
     ? views.filter(({ view }) =>
@@ -216,10 +263,10 @@ function SectionList({
         <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.heading}>
           {section.title}
         </Text>
-        {section.screenAction && (
-          <TouchableOpacity style={styles.headerBtn} onPress={() => setApplyOpen(true)}>
+        {screenAction && (
+          <TouchableOpacity style={styles.headerBtn} onPress={() => setActionOpen(true)}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.headerBtnText}>
-              {section.screenAction.label}
+              {screenAction.label}
             </Text>
           </TouchableOpacity>
         )}
@@ -249,7 +296,16 @@ function SectionList({
             </Text>
           }
           renderItem={({ item }) => (
-            <Row view={item.view} onPress={item.actions.length ? () => offer(item.raw, item.actions) : undefined} />
+            <Row
+              view={item.view}
+              onPress={
+                section.opens === "letter"
+                  ? () => setOpenLetterId(Number(item.raw.id))
+                  : item.actions.length
+                    ? () => offer(item.raw, item.actions)
+                    : undefined
+              }
+            />
           )}
         />
       )}
@@ -262,12 +318,37 @@ function SectionList({
         />
       )}
 
-      {applyOpen && (
+      {actionOpen && screenAction?.kind === "apply-leave" && (
         <ApplyLeave
-          onClose={() => setApplyOpen(false)}
+          onClose={() => setActionOpen(false)}
           onDone={() => {
-            setApplyOpen(false)
+            setActionOpen(false)
             load()
+          }}
+        />
+      )}
+
+      {actionOpen && screenAction?.kind === "generate-letter" && (
+        <GenerateLetterSheet
+          onClose={() => setActionOpen(false)}
+          onGenerated={(letter) => {
+            // Straight into the document. A letter that has been issued but not
+            // read back is one nobody has checked, and the form is the wrong
+            // place to discover that a designation was missing.
+            setActionOpen(false)
+            setFreshLetter(letter)
+            load()
+          }}
+        />
+      )}
+
+      {(openLetterId !== null || freshLetter) && (
+        <LetterDocumentModal
+          letterId={openLetterId}
+          preloaded={freshLetter}
+          onClose={() => {
+            setOpenLetterId(null)
+            setFreshLetter(null)
           }}
         />
       )}
@@ -601,7 +682,7 @@ const styles = StyleSheet.create({
 
   // the apply-leave sheet
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(15,23,42,0.45)",
     alignItems: "center",
     justifyContent: "center",

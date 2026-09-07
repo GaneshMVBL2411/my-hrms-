@@ -41,21 +41,43 @@ function money(value: number) {
 const REF_ABBREV: Record<LetterPayload["letterType"], string> = {
   offer: "OFR",
   appointment: "APT",
+  joining: "JON",
   experience: "EXP",
   relieving: "REL",
   certificate: "CERT",
+  internship: "INT",
+  promotion: "PRM",
+  appraisal: "APR",
+  confirmation: "CNF",
+  warning: "WRN",
+  termination: "TRM",
 }
 
 const TITLE: Record<LetterPayload["letterType"], string> = {
   offer: "Letter of Offer",
   appointment: "Appointment Letter",
+  joining: "Confirmation of Joining",
   experience: "Experience Certificate",
   relieving: "Relieving Letter",
   certificate: "Certificate of Employment",
+  internship: "Internship Offer & Engagement Letter",
+  promotion: "Promotion & Increment Letter",
+  appraisal: "Annual Appraisal & Salary Revision Letter",
+  confirmation: "Probation Confirmation Letter",
+  warning: "Formal Warning Notice",
+  termination: "Letter of Termination",
 }
 
 /** Countersigned by the employee; the others are issued, not agreed. */
-const COUNTERSIGNED: LetterPayload["letterType"][] = ["offer", "appointment"]
+const COUNTERSIGNED: LetterPayload["letterType"][] = [
+  "offer",
+  "appointment",
+  "joining",
+  "internship",
+  "promotion",
+  "warning",
+  "termination",
+]
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -78,9 +100,8 @@ function LetterContent({ letter, primary }: { letter: LetterPayload; primary: st
   const probation = letter.probationText ?? "Six months from the date of joining"
   const notice = letter.noticePeriodText ?? "Thirty days on either side after confirmation"
 
-  // The two certificates address the world rather than the employee, which the
-  // templates reflect in the salutation and in who the details describe.
-  const addressesEmployee = letter.letterType !== "certificate"
+  // Experience and employment certificates address the world rather than the employee
+  const addressesEmployee = letter.letterType !== "certificate" && letter.letterType !== "experience"
 
   const body: React.ReactNode[] = []
   const details: { label: string; value: string }[] = []
@@ -114,6 +135,36 @@ function LetterContent({ letter, primary }: { letter: LetterPayload; primary: st
       )
       break
 
+    case "joining":
+      body.push(
+        <>
+          We are delighted to formally welcome you to {company} and confirm your reporting for duty as{" "}
+          <strong>{designation}</strong> in the <strong>{department}</strong> function, effective from{" "}
+          <strong>{joining}</strong>.
+          {letter.reportingManagerName ? (
+            <> You will report to <strong>{letter.reportingManagerName}</strong>.</>
+          ) : null}
+        </>,
+        <>
+          This letter serves as an official acknowledgment that you have joined our organization, submitted all
+          onboarding documentation, and been allocated Employee Code <strong>{letter.employeeCode}</strong>.
+        </>,
+        <>
+          We are confident that your expertise and professional dedication will make a meaningful contribution to our
+          team, and we look forward to a successful and rewarding journey together.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "Designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Date of joining", value: joining },
+        { label: "Annual CTC", value: ctc },
+        { label: "Probation period", value: probation },
+        { label: "Official workplace", value: letter.companyAddress ?? company }
+      )
+      break
+
     case "appointment":
       body.push(
         <>
@@ -139,6 +190,112 @@ function LetterContent({ letter, primary }: { letter: LetterPayload; primary: st
         { label: "Annual CTC", value: ctc },
         { label: "Probation", value: probation },
         { label: "Notice period", value: notice }
+      )
+      break
+
+    case "confirmation":
+      body.push(
+        <>
+          Further to your appointment as <strong>{designation}</strong> in the <strong>{department}</strong>{" "}
+          department on <strong>{joining}</strong>, we have reviewed your performance and conduct during the
+          probationary period.
+        </>,
+        <>
+          We are pleased to inform you that you have satisfactorily completed your probation, and your services with{" "}
+          {company} are hereby confirmed as a regular, full-time permanent employee with effect from{" "}
+          <strong>{today}</strong>.
+        </>,
+        <>
+          All terms and conditions of service applicable to confirmed staff shall now apply to you. We congratulate you
+          on this milestone and look forward to your continued contribution.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "Designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Original date of joining", value: joining },
+        { label: "Confirmation effective date", value: today },
+        { label: "Notice period", value: notice }
+      )
+      break
+
+    case "promotion":
+      body.push(
+        <>
+          In recognition of your exceptional performance, sustained dedication, and valuable contributions to{" "}
+          {company}, the Management is pleased to promote you to the position of <strong>{designation}</strong> in
+          the <strong>{department}</strong> function, with effect from <strong>{today}</strong>.
+        </>,
+        <>
+          In alignment with your elevated role and expanded responsibilities, your Annual Cost to Company (CTC) has
+          been revised to <strong>{ctc}</strong>. All other terms and conditions of your employment contract remain in
+          full effect.
+        </>,
+        <>
+          We commend your consistent commitment to excellence and trust you will continue to inspire your team and drive
+          significant value in your new capacity. Please accept our heartiest congratulations.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "New designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Effective date", value: today },
+        { label: "Revised annual CTC", value: ctc }
+      )
+      break
+
+    case "appraisal":
+      body.push(
+        <>
+          Following our annual performance appraisal and compensation review, we take great pleasure in communicating
+          the revision in your remuneration package at {company}.
+        </>,
+        <>
+          Effective from <strong>{today}</strong>, your Annual Cost to Company (CTC) has been enhanced to{" "}
+          <strong>{ctc}</strong> in recognition of your dedicated services as <strong>{designation}</strong> in the{" "}
+          <strong>{department}</strong> team.
+        </>,
+        <>
+          We deeply appreciate your hard work, loyalty, and positive impact across our initiatives. We look forward to
+          your continued enthusiasm and partnership in our collective growth.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "Designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Revision effective date", value: today },
+        { label: "Revised annual CTC", value: ctc }
+      )
+      break
+
+    case "internship":
+      body.push(
+        <>
+          We are pleased to offer you an engagement as an <strong>Intern / Trainee</strong> in the{" "}
+          <strong>{department}</strong> team at {company}, commencing from <strong>{joining}</strong>.
+          {letter.reportingManagerName ? (
+            <> You will work under the mentorship of <strong>{letter.reportingManagerName}</strong>.</>
+          ) : null}
+        </>,
+        <>
+          During this period, you will gain practical industry experience, contribute to real-world projects, and
+          receive mentorship. You are expected to observe company policies, protect proprietary information, and
+          maintain professional standards throughout your tenure.
+        </>,
+        <>
+          Upon successful completion of your internship deliverables, you will receive an official Internship Completion
+          Certificate.
+        </>
+      )
+      details.push(
+        { label: "Role / Track", value: `${designation} (Intern)` },
+        { label: "Department", value: department },
+        { label: "Commencement date", value: joining },
+        { label: "Monthly stipend / CTC", value: ctc },
+        { label: "Internship duration", value: probation }
       )
       break
 
@@ -201,13 +358,69 @@ function LetterContent({ letter, primary }: { letter: LetterPayload; primary: st
           <strong>{designation}</strong> in the <strong>{department}</strong> function, and has been since{" "}
           <strong>{joining}</strong>.
         </>,
-        <>This certificate is issued upon request for official purposes.</>
+        <>This certificate is issued upon request for official verification and record purposes.</>
       )
       details.push(
         { label: "Employee code", value: letter.employeeCode },
         { label: "Designation", value: `${designation}, ${department}` },
         { label: "Date of joining", value: joining },
         { label: "Employment status", value: "Active" }
+      )
+      break
+
+    case "warning":
+      body.push(
+        <>
+          This letter serves as a formal written warning regarding observed issues concerning your performance and
+          compliance with company standards in your capacity as <strong>{designation}</strong> in the{" "}
+          <strong>{department}</strong> department.
+        </>,
+        <>
+          {letter.customMessage ? (
+            letter.customMessage
+          ) : (
+            "Despite prior feedback, your deliverables and adherence have fallen short of required standards. You are advised to take corrective steps immediately and maintain consistent performance."
+          )}
+        </>,
+        <>
+          Failure to demonstrate the requisite improvement within the review timeframe may lead to further disciplinary
+          measures in accordance with company policy.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "Designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Date of notice", value: today },
+        { label: "Notice category", value: "Formal Written Warning" }
+      )
+      break
+
+    case "termination":
+      body.push(
+        <>
+          We regret to inform you that your employment as <strong>{designation}</strong> in the{" "}
+          <strong>{department}</strong> function with {company} stands terminated with effect from{" "}
+          <strong>{today}</strong>.
+        </>,
+        <>
+          {letter.customMessage ? (
+            letter.customMessage
+          ) : (
+            "This decision follows formal review and is in accordance with company policies and terms of your employment contract."
+          )}
+        </>,
+        <>
+          You are requested to return all company assets, credentials, and equipment immediately. Your final dues and
+          settlement will be disbursed post-clearance.
+        </>
+      )
+      details.push(
+        { label: "Employee code", value: letter.employeeCode },
+        { label: "Designation", value: designation },
+        { label: "Department", value: department },
+        { label: "Separation date", value: today },
+        { label: "Separation status", value: "Formal Separation" }
       )
       break
   }
@@ -233,10 +446,19 @@ function LetterContent({ letter, primary }: { letter: LetterPayload; primary: st
       ) : null}
 
       {/* 3 — subject, where the template has one */}
-      {(letter.letterType === "offer" || letter.letterType === "appointment") && (
+      {letter.letterType !== "certificate" && letter.letterType !== "experience" && (
         <p className="mt-4 text-sm font-semibold">
-          Subject: {letter.letterType === "offer" ? "Offer of employment" : "Appointment"} —{" "}
-          {designation}, {department}
+          Subject:{" "}
+          {letter.letterType === "offer" && `Offer of employment — ${designation}, ${department}`}
+          {letter.letterType === "appointment" && `Appointment as ${designation} — ${department}`}
+          {letter.letterType === "joining" && `Confirmation of Joining & Reporting for Duty — ${designation}`}
+          {letter.letterType === "confirmation" && `Confirmation of Employment — ${designation}`}
+          {letter.letterType === "promotion" && `Promotion to ${designation} & Compensation Revision`}
+          {letter.letterType === "appraisal" && `Annual Performance Appraisal & Remuneration Revision`}
+          {letter.letterType === "internship" && `Offer of Internship Engagement — ${department}`}
+          {letter.letterType === "relieving" && `Relieving from Services — ${designation}`}
+          {letter.letterType === "warning" && `Formal Warning Notice — ${designation}`}
+          {letter.letterType === "termination" && `Letter of Separation / Termination — ${designation}`}
         </p>
       )}
 

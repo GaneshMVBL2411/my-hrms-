@@ -79,7 +79,7 @@ create type asset_category_enum as enum ('laptop', 'monitor', 'keyboard', 'mouse
 create type asset_status_enum as enum ('available', 'assigned', 'retired', 'maintenance');
 create type candidate_status_enum as enum ('applied', 'interview_scheduled', 'interviewed', 'offered', 'joined', 'rejected');
 create type interview_outcome_enum as enum ('pending', 'pass', 'fail');
-create type letter_type_enum as enum ('offer', 'appointment', 'experience', 'relieving', 'certificate');
+create type letter_type_enum as enum ('offer', 'appointment', 'experience', 'relieving', 'certificate', 'joining', 'internship', 'promotion', 'appraisal', 'confirmation', 'warning', 'termination');
 create type announcement_category_enum as enum ('news', 'holiday', 'event', 'general');
 create type event_type_enum as enum ('meeting', 'event', 'holiday');
 

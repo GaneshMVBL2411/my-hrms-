@@ -1,4 +1,5 @@
 import { decideLeave, updateTask, type SelectOptions } from "./api"
+import { LETTER_TITLES } from "./letters"
 import type { MotionName } from "./motion"
 
 /**
@@ -82,8 +83,24 @@ export interface SectionDef {
   row: (r: Record<string, any>) => RowView
   /** Offered on tap. Omitted where a row is a record rather than a decision. */
   rowActions?: (r: Record<string, any>) => RowAction[]
-  /** A section-level action, shown as a button in the header. */
-  screenAction?: { label: string; kind: "apply-leave" }
+  /**
+   * A section-level action, shown as a button in the header.
+   *
+   * `roles` gates the button alone, not the section: everyone has letters, but
+   * only HR issues them, so Letters is offered to all and its Generate button
+   * to three roles. Section-level `roles` cannot express that, and gating the
+   * whole section on HR would hide from employees the letters that are theirs.
+   * As everywhere else here, this only avoids offering something that would be
+   * refused — generate_letter checks the caller itself.
+   */
+  screenAction?: { label: string; kind: "apply-leave" | "generate-letter"; roles?: string[] }
+  /**
+   * Tapping a row opens a document rather than an action sheet.
+   *
+   * A letter is the one thing in this app that is read rather than scanned, so
+   * its row leads somewhere instead of offering a list of verbs.
+   */
+  opens?: "letter"
   /**
    * Narrow this list to the signed-in employee.
    *
@@ -353,7 +370,7 @@ export const SECTIONS: SectionDef[] = [
     motion: "bob",
     icon: "git-network-outline",
     tint: "#6366f1",
-    title: "Reporting Manager",
+    title: "Reporting Hierarchy",
     empty: "No employees to report on.",
     // An aggregate, not a table: report_reporting_manager groups the company by
     // who reports to whom and re-checks for an HR role before it reads a row.
@@ -412,6 +429,40 @@ export const SECTIONS: SectionDef[] = [
       meta: shortDate(r.updated_at),
       badge: `v${r.version}`,
     }),
+  },
+  {
+    key: "letters",
+    motion: "flip",
+    icon: "ribbon-outline",
+    tint: "#d97706",
+    title: "HR Letters",
+    empty: "No letters issued yet. Tap Generate above to issue an offer, joining, or other letter.",
+    table: "generated_letter_detail",
+    query: {
+      columns: "id, employee_id, employee_name, letter_type, generated_by_name, generated_at",
+      order: [{ column: "generated_at", ascending: false }],
+      limit: 100,
+    },
+    // Not scoped to the signed-in employee, and that is the intended reading
+    // rather than the omission the attendance note warns about: for HR this is
+    // the issue log — who has been sent what — and the employee name is in the
+    // row that makes it legible. Everyone else is narrowed to their own letters
+    // by generated_letters_read, which is the same answer the portal's "My
+    // Letters" tab gives.
+    // The issuer goes in the subtitle rather than the badge: badges are
+    // title-cased for statuses, which turns "by Ravi Shanker" into "By Ravi
+    // Shanker". Both names stay in the searched text either way.
+    row: (r) => ({
+      title: LETTER_TITLES[r.letter_type as keyof typeof LETTER_TITLES] ?? String(r.letter_type),
+      subtitle: `${r.employee_name} · issued by ${r.generated_by_name}`,
+      meta: shortDate(r.generated_at),
+    }),
+    opens: "letter",
+    screenAction: {
+      label: "Generate",
+      kind: "generate-letter",
+      roles: ["founder", "company_admin", "hr_admin"],
+    },
   },
   {
     key: "calendar",
