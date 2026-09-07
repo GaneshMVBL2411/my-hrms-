@@ -159,8 +159,8 @@ export function Sidebar({
                 // the CSS animation, so it replays even on a repeat click.
                 key={isAnimating ? `${item.path}-${clicked.nonce}` : item.path}
                 className={cn(
-                  "size-5 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-115 group-active:scale-80 group-active:rotate-[-8deg]",
-                  isAnimating && `nav-anim-${item.anim} icon-spring`
+                  "size-5 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-95",
+                  isAnimating && `nav-anim-${item.anim}`
                 )}
                 style={{ color: item.color }}
               />

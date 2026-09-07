@@ -730,20 +730,443 @@ a:not(:active),
   transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Tactile movement for SVG icons on active click/press */
-button:active svg,
-a:active svg,
-[role="button"]:active svg,
-.interactive-click:active svg {
-  transform: scale(0.80) rotate(-6deg) translateY(1.5px);
-  transition: transform 0.1s cubic-bezier(0.2, 0, 0, 1);
-}
+/* =============================================================================
+   Realistic Physical Movement & Tactile Micro-Interactions
+   Each icon plays a distinct physical motion representing its real-world object.
+   ============================================================================= */
 
-button:not(:active) svg,
-a:not(:active) svg,
-[role="button"]:not(:active) svg,
-.interactive-click:not(:active) svg {
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+@media (prefers-reduced-motion: no-preference) {
+  /* 1. Bell Chime: pendulum swing with harmonic damping */
+  @keyframes tactile-bell-chime {
+    0%   { transform: rotate(0deg); }
+    20%  { transform: rotate(-24deg); }
+    40%  { transform: rotate(20deg); }
+    60%  { transform: rotate(-12deg); }
+    80%  { transform: rotate(6deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* 2. Gear Spin: precision mechanical rotation with inertial spring rebound */
+  @keyframes tactile-gear-spin {
+    0%   { transform: rotate(0deg); }
+    65%  { transform: rotate(125deg); }
+    82%  { transform: rotate(110deg); }
+    100% { transform: rotate(118deg); }
+  }
+
+  /* 3. Calendar Flip: top-bound 3D sheet flip */
+  @keyframes tactile-calendar-flip {
+    0%   { transform: perspective(300px) rotateX(0deg); }
+    40%  { transform: perspective(300px) rotateX(-72deg) scale(0.92); }
+    70%  { transform: perspective(300px) rotateX(16deg); }
+    100% { transform: perspective(300px) rotateX(0deg); }
+  }
+
+  /* 4. Trash Kick: lid tilts back with container debris shudder */
+  @keyframes tactile-trash-kick {
+    0%   { transform: scale(1) rotate(0deg); }
+    25%  { transform: scale(0.92) rotate(-16deg) translateY(-2px); }
+    50%  { transform: scale(1.06) rotate(10deg) translateY(1px); }
+    75%  { transform: scale(0.98) rotate(-4deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* 5. Check Stamp: hydraulic plunge down and rubbery balloon pop */
+  @keyframes tactile-check-stamp {
+    0%   { transform: scale(1) translateY(0); }
+    25%  { transform: scale(0.72) translateY(2px); }
+    60%  { transform: scale(1.32) translateY(-2px); filter: brightness(1.18); }
+    82%  { transform: scale(0.95) translateY(0.5px); }
+    100% { transform: scale(1) translateY(0); }
+  }
+
+  /* 6. Rocket / Send Launch: kinetic drawback and high-speed leap */
+  @keyframes tactile-send-launch {
+    0%   { transform: translate(0, 0) scale(1); }
+    25%  { transform: translate(-3px, 2px) scale(0.85) rotate(-8deg); }
+    55%  { transform: translate(7px, -7px) scale(1.22) rotate(12deg); }
+    80%  { transform: translate(-1px, 1px) scale(0.96); }
+    100% { transform: translate(0, 0) scale(1); }
+  }
+
+  /* 7. Search Focus: lens zoom wobble and glass ping */
+  @keyframes tactile-search-pulse {
+    0%   { transform: scale(1) rotate(0deg); }
+    30%  { transform: scale(1.35) rotate(-12deg); }
+    65%  { transform: scale(0.9) rotate(6deg); }
+    85%  { transform: scale(1.08) rotate(-2deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* 8. User Greeting: polite head nod and shoulder bob */
+  @keyframes tactile-user-nod {
+    0%   { transform: translateY(0) scale(1); }
+    30%  { transform: translateY(-4px) scale(1.12) rotate(4deg); }
+    60%  { transform: translateY(2px) scale(0.95) rotate(-2deg); }
+    100% { transform: translateY(0) scale(1) rotate(0deg); }
+  }
+
+  /* 9. Plus Bloom: snappy expanding quarter-turn bloom */
+  @keyframes tactile-plus-expand {
+    0%   { transform: rotate(0deg) scale(1); }
+    40%  { transform: rotate(90deg) scale(1.32); }
+    75%  { transform: rotate(86deg) scale(0.96); }
+    100% { transform: rotate(90deg) scale(1); }
+  }
+
+  /* 10. Download Drop: gravity drop and ground bounce */
+  @keyframes tactile-download-drop {
+    0%   { transform: translateY(0); }
+    30%  { transform: translateY(-3px) scaleY(0.9); }
+    60%  { transform: translateY(6px) scaleY(1.22); }
+    80%  { transform: translateY(-1px) scaleY(0.95); }
+    100% { transform: translateY(0) scaleY(1); }
+  }
+
+  /* 11. Upload Leap: anti-gravity vault upward */
+  @keyframes tactile-upload-leap {
+    0%   { transform: translateY(0); }
+    30%  { transform: translateY(3px) scaleY(0.88); }
+    60%  { transform: translateY(-7px) scaleY(1.25); }
+    80%  { transform: translateY(1px) scaleY(0.96); }
+    100% { transform: translateY(0) scaleY(1); }
+  }
+
+  /* 12. Refresh Spin: continuous torque spin with elastic snap */
+  @keyframes tactile-refresh-spin {
+    0%   { transform: rotate(0deg); }
+    75%  { transform: rotate(385deg); }
+    90%  { transform: rotate(355deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* 13. LogOut Push: breaker switch click / door pop */
+  @keyframes tactile-logout-push {
+    0%   { transform: translateX(0) scale(1); }
+    35%  { transform: translateX(4px) scale(0.9); }
+    70%  { transform: translateX(-2px) scale(1.08); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  /* 14. LogIn Pull: step inside doorway */
+  @keyframes tactile-login-pull {
+    0%   { transform: translateX(0) scale(1); }
+    35%  { transform: translateX(-4px) scale(0.9); }
+    70%  { transform: translateX(2px) scale(1.08); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  /* 15. Filter Sift: funnel sway and sift */
+  @keyframes tactile-filter-sift {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(-16deg) scale(1.1); }
+    50%  { transform: rotate(16deg) scale(1.1); }
+    75%  { transform: rotate(-6deg) scale(0.95); }
+    100% { transform: rotate(0deg) scale(1); }
+  }
+
+  /* 16. Lock Snap: padlock shackle snap click */
+  @keyframes tactile-lock-snap {
+    0%   { transform: translateY(0) scale(1); }
+    30%  { transform: translateY(-3px) scale(1.06); }
+    55%  { transform: translateY(2px) scale(0.92); }
+    100% { transform: translateY(0) scale(1); }
+  }
+
+  /* 17. Chevron Kick: directional kinetic thrust */
+  @keyframes tactile-chevron-kick {
+    0%   { transform: translateX(0); }
+    40%  { transform: translateX(4px); }
+    75%  { transform: translateX(-1px); }
+    100% { transform: translateX(0); }
+  }
+
+  /* 18. Eye Blink: aperture blink */
+  @keyframes tactile-eye-blink {
+    0%   { transform: scaleY(1); }
+    40%  { transform: scaleY(0.12); }
+    75%  { transform: scaleY(1.18); }
+    100% { transform: scaleY(1); }
+  }
+
+  /* 19. Heart Pulse: double lub-dub heartbeat */
+  @keyframes tactile-heart-thud {
+    0%   { transform: scale(1); }
+    25%  { transform: scale(1.32); }
+    45%  { transform: scale(1.05); }
+    65%  { transform: scale(1.28); }
+    100% { transform: scale(1); }
+  }
+
+  /* 20. Sun / Moon Celestial Spin */
+  @keyframes tactile-celestial-spin {
+    0%   { transform: rotate(0deg) scale(1); }
+    50%  { transform: rotate(180deg) scale(1.25); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+
+  /* 21. File / Document Peel: corner flutter */
+  @keyframes tactile-file-peel {
+    0%   { transform: skewY(0deg) scale(1); }
+    35%  { transform: skewY(-8deg) scale(1.1) translateY(-2px); }
+    70%  { transform: skewY(4deg) scale(0.96); }
+    100% { transform: skewY(0deg) scale(1); }
+  }
+
+  /* 22. Clock Tick-Tock */
+  @keyframes tactile-clock-tick {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(14deg); }
+    50%  { transform: rotate(-8deg); }
+    75%  { transform: rotate(4deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* 23. Universal Spring Physics Fallback */
+  @keyframes tactile-universal-spring {
+    0%   { transform: scale(1) rotate(0deg); }
+    25%  { transform: scale(0.82) rotate(-6deg) translateY(1.5px); }
+    60%  { transform: scale(1.22) rotate(4deg) translateY(-2px); }
+    82%  { transform: scale(0.96) rotate(-1deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* ===========================================================================
+     Semantic Trigger Bindings (Lucide & Custom SVG)
+     Active on mouse click, touch tap, or .tactile-animating class
+     =========================================================================== */
+
+  /* Bell chime */
+  button:active .lucide-bell,
+  button:active .lucide-bell-ring,
+  .tactile-animating.lucide-bell,
+  .tactile-animating .lucide-bell,
+  .tactile-bell {
+    transform-origin: 50% 12%;
+    animation: tactile-bell-chime 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Gear / settings */
+  button:active .lucide-settings,
+  button:active .lucide-cog,
+  button:active .lucide-sliders,
+  button:active .lucide-sliders-horizontal,
+  .tactile-animating.lucide-settings,
+  .tactile-animating .lucide-settings,
+  .tactile-gear {
+    transform-origin: 50% 50%;
+    animation: tactile-gear-spin 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Calendar / dates */
+  button:active .lucide-calendar,
+  button:active .lucide-calendar-days,
+  button:active .lucide-calendar-clock,
+  button:active .lucide-calendar-check,
+  button:active .lucide-calendar-plus,
+  .tactile-animating.lucide-calendar,
+  .tactile-animating .lucide-calendar,
+  .tactile-calendar {
+    transform-origin: 50% 15%;
+    animation: tactile-calendar-flip 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Trash / delete */
+  button:active .lucide-trash,
+  button:active .lucide-trash-2,
+  .tactile-animating.lucide-trash,
+  .tactile-animating .lucide-trash,
+  .tactile-trash {
+    transform-origin: 50% 85%;
+    animation: tactile-trash-kick 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Checkmark / success / approve */
+  button:active .lucide-check,
+  button:active .lucide-check-circle,
+  button:active .lucide-check-circle-2,
+  button:active .lucide-list-checks,
+  button:active .lucide-badge-check,
+  .tactile-animating.lucide-check,
+  .tactile-animating .lucide-check,
+  .tactile-check {
+    transform-origin: 50% 50%;
+    animation: tactile-check-stamp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Send / rocket */
+  button:active .lucide-send,
+  button:active .lucide-send-horizontal,
+  button:active .lucide-rocket,
+  .tactile-animating.lucide-send,
+  .tactile-animating .lucide-send,
+  .tactile-send {
+    animation: tactile-send-launch 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Search */
+  button:active .lucide-search,
+  .tactile-animating.lucide-search,
+  .tactile-animating .lucide-search,
+  .tactile-search {
+    transform-origin: 40% 40%;
+    animation: tactile-search-pulse 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* User / users */
+  button:active .lucide-user,
+  button:active .lucide-users,
+  button:active .lucide-user-plus,
+  button:active .lucide-user-check,
+  button:active .lucide-user-x,
+  button:active .lucide-user-circle,
+  .tactile-animating.lucide-user,
+  .tactile-animating .lucide-user,
+  .tactile-user {
+    animation: tactile-user-nod 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Plus / add */
+  button:active .lucide-plus,
+  button:active .lucide-plus-circle,
+  .tactile-animating.lucide-plus,
+  .tactile-animating .lucide-plus,
+  .tactile-plus {
+    transform-origin: 50% 50%;
+    animation: tactile-plus-expand 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Download */
+  button:active .lucide-download,
+  button:active .lucide-arrow-down-to-line,
+  .tactile-animating.lucide-download,
+  .tactile-animating .lucide-download,
+  .tactile-download {
+    animation: tactile-download-drop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Upload */
+  button:active .lucide-upload,
+  button:active .lucide-arrow-up-from-line,
+  .tactile-animating.lucide-upload,
+  .tactile-animating .lucide-upload,
+  .tactile-upload {
+    animation: tactile-upload-leap 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Refresh */
+  button:active .lucide-refresh-cw,
+  button:active .lucide-refresh-ccw,
+  button:active .lucide-rotate-cw,
+  button:active .lucide-rotate-ccw,
+  button:active .lucide-history,
+  .tactile-animating.lucide-refresh,
+  .tactile-animating .lucide-refresh,
+  .tactile-refresh {
+    transform-origin: 50% 50%;
+    animation: tactile-refresh-spin 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Logout / Power */
+  button:active .lucide-log-out,
+  button:active .lucide-power,
+  .tactile-animating.lucide-logout,
+  .tactile-animating .lucide-logout,
+  .tactile-logout {
+    animation: tactile-logout-push 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Login */
+  button:active .lucide-log-in,
+  .tactile-animating.lucide-login,
+  .tactile-animating .lucide-login,
+  .tactile-login {
+    animation: tactile-login-pull 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Filter */
+  button:active .lucide-filter,
+  .tactile-animating.lucide-filter,
+  .tactile-animating .lucide-filter,
+  .tactile-filter {
+    transform-origin: 50% 30%;
+    animation: tactile-filter-sift 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Lock / Security */
+  button:active .lucide-lock,
+  button:active .lucide-unlock,
+  button:active .lucide-shield,
+  button:active .lucide-shield-check,
+  button:active .lucide-key,
+  .tactile-animating.lucide-lock,
+  .tactile-animating .lucide-lock,
+  .tactile-lock {
+    animation: tactile-lock-snap 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Chevrons */
+  button:active .lucide-chevron-right,
+  button:active .lucide-arrow-right,
+  button:active .lucide-arrow-up-right,
+  .tactile-animating.lucide-chevron,
+  .tactile-animating .lucide-chevron {
+    animation: tactile-chevron-kick 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Eye */
+  button:active .lucide-eye,
+  button:active .lucide-eye-off,
+  .tactile-animating.lucide-eye,
+  .tactile-animating .lucide-eye {
+    transform-origin: 50% 50%;
+    animation: tactile-eye-blink 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Heart / sparkles */
+  button:active .lucide-heart,
+  button:active .lucide-sparkles,
+  .tactile-animating.lucide-heart,
+  .tactile-animating .lucide-heart {
+    transform-origin: 50% 50%;
+    animation: tactile-heart-thud 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Sun / Moon */
+  button:active .lucide-sun,
+  button:active .lucide-moon,
+  .tactile-animating.lucide-sun,
+  .tactile-animating .lucide-moon {
+    transform-origin: 50% 50%;
+    animation: tactile-celestial-spin 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* File / folder / documents */
+  button:active .lucide-file-text,
+  button:active .lucide-file,
+  button:active .lucide-folder,
+  button:active .lucide-folder-kanban,
+  .tactile-animating.lucide-file,
+  .tactile-animating .lucide-file {
+    animation: tactile-file-peel 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Clock */
+  button:active .lucide-clock,
+  .tactile-animating.lucide-clock,
+  .tactile-animating .lucide-clock {
+    transform-origin: 50% 50%;
+    animation: tactile-clock-tick 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
+
+  /* Universal Fallback for any SVG inside clicked button/link/interactive element */
+  button:active svg:not([class*="lucide-"]):not(.i3d),
+  a:active svg:not([class*="lucide-"]):not(.i3d),
+  [role="button"]:active svg:not([class*="lucide-"]):not(.i3d),
+  .tactile-animating.tactile-universal {
+    transform-origin: 50% 50%;
+    animation: tactile-universal-spring 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+  }
 }
 
 /* Card tactile hover & active elevation */

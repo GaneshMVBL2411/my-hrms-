@@ -54,10 +54,10 @@ export function StatCard({
           className={cn(
             "flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
             toneClasses[tone],
-            isLink && "group-hover:scale-110 group-hover:shadow-sm group-active:scale-85 group-active:rotate-[-8deg]"
+            isLink && "group-hover:scale-110 group-hover:shadow-sm group-active:scale-90"
           )}
         >
-          <Icon className="size-5 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-85" />
+          <Icon className="size-5 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110" />
         </div>
       </CardContent>
     </Card>

@@ -6,6 +6,8 @@ import { ThemeProvider } from "@/app/ThemeProvider"
 import { AuthProvider } from "@/features/auth/AuthContext"
 import { CompanyTheme } from "@/features/auth/CompanyTheme"
 
+import { TactileMotionProvider } from "@/components/shared/TactileMotionProvider"
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -24,10 +26,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
           {/* Inside AuthProvider because it reads the signed-in tenant, and
               above the routes so the colours are set before anything paints. */}
           <CompanyTheme />
-          <TooltipProvider delayDuration={200}>
-            {children}
-            <Toaster richColors position="top-right" />
-          </TooltipProvider>
+          <TactileMotionProvider>
+            <TooltipProvider delayDuration={200}>
+              {children}
+              <Toaster richColors position="top-right" />
+            </TooltipProvider>
+          </TactileMotionProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>

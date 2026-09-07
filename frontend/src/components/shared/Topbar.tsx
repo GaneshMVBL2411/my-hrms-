@@ -74,35 +74,58 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Notifications">
+            <Button variant="ghost" size="icon" className="relative rounded-xl" aria-label="Notifications">
               <Bell className="size-4.5" />
+              <span className="absolute top-2 right-2 size-2 rounded-full bg-brand-accent" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 rounded-md">
-            <p className="text-sm font-medium text-foreground">Notifications</p>
-            <p className="mt-1 text-sm text-muted-foreground">You're all caught up.</p>
+          <PopoverContent align="end" className="w-80 rounded-2xl p-4 shadow-lg border-border">
+            <div className="flex items-center justify-between border-b border-border pb-2.5">
+              <p className="text-sm font-semibold text-foreground">Notifications</p>
+              <span className="text-[11px] text-muted-foreground">All caught up</span>
+            </div>
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No new alerts at this time.
+            </div>
           </PopoverContent>
         </Popover>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 rounded-md pl-2 pr-3">
-              <Avatar className="size-7">
+            <Button variant="ghost" className="gap-2 rounded-xl pl-2 pr-3 hover:bg-muted">
+              <Avatar className="size-7 rounded-lg">
                 <AvatarImage src={user?.photoUrl ?? undefined} alt={user?.fullName} />
-                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                <AvatarFallback className="text-xs font-semibold rounded-lg">{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden text-sm font-medium sm:inline">{user?.fullName}</span>
+              <div className="hidden flex-col items-start text-left sm:flex">
+                <span className="text-xs font-semibold text-foreground leading-none">{user?.fullName}</span>
+                <span className="text-[10px] text-muted-foreground capitalize mt-0.5">{user?.role?.replace("_", " ")}</span>
+              </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 rounded-md">
-            <DropdownMenuItem onClick={() => navigate("/profile")}>
+          <DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5 shadow-lg border-border">
+            <div className="px-2.5 py-2 border-b border-border mb-1">
+              <p className="text-sm font-semibold text-foreground truncate">{user?.fullName}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary capitalize">
+                  {user?.role?.replace("_", " ")}
+                </span>
+                {user?.isSuperAdmin && (
+                  <span className="inline-flex items-center rounded-md bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+                    Super Admin
+                  </span>
+                )}
+              </div>
+            </div>
+            <DropdownMenuItem className="rounded-xl cursor-pointer" onClick={() => navigate("/profile")}>
               <UserCircle className="mr-2 size-4" />
-              Profile
+              My Profile
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void signOut()} variant="destructive">
+            <DropdownMenuItem className="rounded-xl cursor-pointer" onClick={() => void signOut()} variant="destructive">
               <LogOut className="mr-2 size-4" />
-              Logout
+              Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
