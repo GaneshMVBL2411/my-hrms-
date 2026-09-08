@@ -4,6 +4,7 @@
     "slug": "hrms-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "hrms",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -41,14 +42,18 @@
         }
       ],
       "expo-secure-store",
-      "expo-status-bar",
       "expo-font",
       [
         "expo-splash-screen",
         {
           "image": "./assets/logo-mark.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/logo-mark.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#0b1220"
+          }
         }
       ]
     ],

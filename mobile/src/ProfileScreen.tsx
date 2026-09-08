@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { logout, select, type SessionUser } from "./api"
 import { forgetDeviceKey, gateMode, isEnrolled } from "./device"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette, type ThemeMode } from "./theme"
 
 interface Profile {
   full_name: string | null
@@ -50,6 +51,8 @@ export function ProfileScreen({
   const [gate, setGate] = useState<"keystore" | "prompt" | null>(null)
   const [busy, setBusy] = useState(false)
   const insets = useSafeAreaInsets()
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
 
   useEffect(() => {
     if (user.employeeId === null) {
@@ -110,6 +113,19 @@ export function ProfileScreen({
           </View>
 
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.section}>
+            Appearance
+          </Text>
+          <View style={styles.card}>
+            {THEME_OPTIONS.map((option, i) => (
+              <ThemeRow
+                key={option.mode}
+                option={option}
+                last={i === THEME_OPTIONS.length - 1}
+              />
+            ))}
+          </View>
+
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.section}>
             This device
           </Text>
           <View style={styles.card}>
@@ -117,7 +133,7 @@ export function ProfileScreen({
               <Ionicons
                 name={enrolled ? "finger-print" : "finger-print-outline"}
                 size={scale(22)}
-                color={enrolled ? colors.brand : colors.faint}
+                color={enrolled ? colors.accent : colors.faint}
               />
               <View style={{ flex: 1 }}>
                 <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.deviceTitle}>
@@ -182,10 +198,10 @@ export function ProfileScreen({
             }}
           >
             {busy ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onFill} />
             ) : (
               <>
-                <Ionicons name="log-out-outline" size={scale(20)} color="#fff" />
+                <Ionicons name="log-out-outline" size={scale(20)} color={colors.onFill} />
                 <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.signOutText}>
                   Sign out
                 </Text>
@@ -198,7 +214,61 @@ export function ProfileScreen({
   )
 }
 
+/**
+ * Light, dark, or whatever the phone is doing.
+ *
+ * Three rows rather than a single on/off switch, because "follow the phone" is
+ * a real answer and a toggle cannot express it — with only two states, someone
+ * whose phone dims itself in the evening has to come back here twice a day.
+ */
+const THEME_OPTIONS: { mode: ThemeMode; label: string; hint: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { mode: "light", label: "Light", hint: "Always the light theme", icon: "sunny-outline" },
+  { mode: "dark", label: "Dark", hint: "Always the dark theme", icon: "moon-outline" },
+  { mode: "system", label: "System", hint: "Match this phone's setting", icon: "phone-portrait-outline" },
+]
+
+function ThemeRow({
+  option,
+  last,
+}: {
+  option: (typeof THEME_OPTIONS)[number]
+  last: boolean
+}) {
+  const { colors, mode, setMode } = useTheme()
+  const styles = useStyles(makeStyles)
+  const selected = mode === option.mode
+
+  return (
+    <TouchableOpacity
+      style={[styles.themeRow, last && { borderBottomWidth: 0 }]}
+      onPress={() => setMode(option.mode)}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${option.label} theme`}
+    >
+      <Ionicons
+        name={option.icon}
+        size={scale(20)}
+        color={selected ? colors.accent : colors.faint}
+      />
+      <View style={{ flex: 1 }}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.themeLabel}>
+          {option.label}
+        </Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.themeHint}>
+          {option.hint}
+        </Text>
+      </View>
+      {/* A tick, not just a colour: the selected row has to be distinguishable
+          without relying on telling green from grey. */}
+      {selected && <Ionicons name="checkmark" size={scale(20)} color={colors.accent} />}
+    </TouchableOpacity>
+  )
+}
+
 function Field({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
+  const styles = useStyles(makeStyles)
+
   return (
     <View style={[styles.field, last && { borderBottomWidth: 0 }]}>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.fieldLabel}>
@@ -220,7 +290,7 @@ function initials(name: string) {
     .join("")
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   bar: {
     flexDirection: "row",
@@ -244,7 +314,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { color: "#fff", fontSize: scale(24), fontWeight: "700" },
+  avatarText: { color: colors.onFill, fontSize: scale(24), fontWeight: "700" },
   name: { fontSize: scale(20), fontWeight: "700", color: colors.text, textAlign: "center" },
   email: { fontSize: scale(13), color: colors.muted, textAlign: "center" },
   rolePill: {
@@ -288,6 +358,17 @@ const styles = StyleSheet.create({
   },
   deviceBtnText: { fontSize: scale(14), fontWeight: "600", color: colors.danger },
 
+  themeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(12),
+    paddingVertical: scale(12),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  themeLabel: { fontSize: scale(14), fontWeight: "600", color: colors.text },
+  themeHint: { fontSize: scale(12), color: colors.muted, marginTop: scale(2) },
+
   signOut: {
     marginTop: scale(6),
     flexDirection: "row",
@@ -298,5 +379,5 @@ const styles = StyleSheet.create({
     borderRadius: scale(14),
     paddingVertical: scale(15),
   },
-  signOutText: { color: "#fff", fontSize: scale(16), fontWeight: "700" },
+  signOutText: { color: colors.onFill, fontSize: scale(16), fontWeight: "700" },
 })

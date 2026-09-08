@@ -20,7 +20,8 @@ import {
   type TodayRecord,
 } from "./api"
 import { biometricReady, createDeviceKey, isEnrolled, signChallenge, forgetDeviceKey } from "./device"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette } from "./theme"
 import { Logo } from "./Logo"
 
 /**
@@ -37,6 +38,8 @@ import { Logo } from "./Logo"
  * so the layout holds on a small phone and on one with system text enlarged.
  */
 export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onSignedOut: () => void }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [record, setRecord] = useState<TodayRecord | null>(null)
   const [enrolled, setEnrolled] = useState<boolean | null>(null)
   const [blocked, setBlocked] = useState<string | null>(null)
@@ -99,11 +102,14 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
         if (shot?.base64) photo = `data:image/jpeg;base64,${shot.base64}`
       }
 
-      await devicePunch(direction, signature, photo)
+      // The server's own answer, not the fact that a photo was sent: it drops
+      // anything over 2MB and still records the punch, so trusting the local
+      // variable here would report a photo saved that never was.
+      const { photoStored } = await devicePunch(direction, signature, photo)
       await refresh()
       Alert.alert(
         direction === "in" ? "Checked in" : "Checked out",
-        photo ? "Verified, photo saved" : "Verified"
+        photoStored ? "Verified, photo saved" : "Verified"
       )
     } catch (e) {
       const message = (e as Error).message || ""
@@ -200,7 +206,7 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
       ) : enrolled === false ? (
         <TouchableOpacity style={styles.primary} onPress={enrol} disabled={busy !== null}>
           {busy === "enrol" ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onFill} />
           ) : (
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
               Set up biometric check-in
@@ -227,7 +233,7 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
             disabled={checkedIn || busy !== null}
           >
             {busy === "in" ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onFill} />
             ) : (
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
                 Check in
@@ -241,7 +247,7 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
             disabled={!checkedIn || checkedOut || busy !== null}
           >
             {busy === "out" ? (
-              <ActivityIndicator color={colors.brand} />
+              <ActivityIndicator color={colors.accent} />
             ) : (
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.secondaryText}>
                 Check out
@@ -255,7 +261,7 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
           </Text>
         </>
       ) : (
-        <ActivityIndicator style={{ marginTop: scale(24) }} color={colors.brand} />
+        <ActivityIndicator style={{ marginTop: scale(24) }} color={colors.accent} />
       )}
     </ScrollView>
   )
@@ -266,7 +272,7 @@ function formatTime(value: string | null | undefined) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { padding: scale(18), paddingBottom: scale(28), gap: scale(12) },
   header: {
@@ -280,7 +286,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { fontSize: scale(22), fontWeight: "700", color: colors.text },
   email: { fontSize: scale(12), color: colors.muted, marginTop: scale(2) },
-  signOut: { fontSize: scale(14), color: colors.brand, fontWeight: "600" },
+  signOut: { fontSize: scale(14), color: colors.accent, fontWeight: "600" },
   card: {
     backgroundColor: colors.card,
     borderRadius: scale(12),
@@ -313,20 +319,20 @@ const styles = StyleSheet.create({
     minHeight: scale(48),
     justifyContent: "center",
   },
-  primaryText: { color: "#fff", fontSize: scale(16), fontWeight: "600" },
+  primaryText: { color: colors.onFill, fontSize: scale(16), fontWeight: "600" },
   secondary: {
     backgroundColor: colors.card,
     borderWidth: 1.5,
-    borderColor: colors.brand,
+    borderColor: colors.accent,
     borderRadius: scale(12),
     paddingVertical: scale(15),
     alignItems: "center",
     minHeight: scale(48),
     justifyContent: "center",
   },
-  secondaryText: { color: colors.brand, fontSize: scale(16), fontWeight: "600" },
-  subtle: { backgroundColor: "#eef2f7", borderRadius: scale(10), padding: scale(12) },
-  subtleText: { color: "#475569", fontSize: scale(12), textAlign: "center" },
+  secondaryText: { color: colors.accent, fontSize: scale(16), fontWeight: "600" },
+  subtle: { backgroundColor: colors.subtle, borderRadius: scale(10), padding: scale(12) },
+  subtleText: { color: colors.subtleText, fontSize: scale(12), textAlign: "center" },
   disabled: { opacity: 0.45 },
   blocked: { color: colors.warn, fontSize: scale(13), lineHeight: scale(19) },
   note: {

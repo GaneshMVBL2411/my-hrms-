@@ -14,10 +14,13 @@ import {
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { login, requestPasswordReset, type SessionUser } from "./api"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette } from "./theme"
 import { Logo } from "./Logo"
 
 export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) => void }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -147,7 +150,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
           disabled={busy || !email || !password}
         >
           {busy ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onFill} />
           ) : (
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.buttonText}>
               Sign in
@@ -200,6 +203,8 @@ function ForgotPassword({
   initialEmail: string
   onClose: () => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [email, setEmail] = useState(initialEmail)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
@@ -286,7 +291,7 @@ function ForgotPassword({
                   onPress={submit}
                 >
                   {busy ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color={colors.onFill} />
                   ) : (
                     <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetPrimaryText}>
                       Send link
@@ -302,7 +307,7 @@ function ForgotPassword({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { flexGrow: 1, justifyContent: "center", padding: scale(20) },
   brand: { alignItems: "center", marginBottom: scale(4) },
@@ -342,12 +347,12 @@ const styles = StyleSheet.create({
     marginTop: scale(6),
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#fff", fontSize: scale(16), fontWeight: "600" },
+  buttonText: { color: colors.onFill, fontSize: scale(16), fontWeight: "600" },
   error: { color: colors.danger, marginBottom: scale(6), fontSize: scale(13) },
 
   // ----------------------------------------------------- forgot password
   forgotButton: { alignSelf: "center", marginTop: scale(16), paddingVertical: scale(6) },
-  forgotText: { color: colors.brand, fontSize: scale(14), fontWeight: "600" },
+  forgotText: { color: colors.accent, fontSize: scale(14), fontWeight: "600" },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.45)",
@@ -376,5 +381,5 @@ const styles = StyleSheet.create({
   sheetGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
   sheetGhostText: { color: colors.text, fontWeight: "600", fontSize: scale(14) },
   sheetPrimary: { backgroundColor: colors.brand },
-  sheetPrimaryText: { color: "#fff", fontWeight: "700", fontSize: scale(14) },
+  sheetPrimaryText: { color: colors.onFill, fontWeight: "700", fontSize: scale(14) },
 })

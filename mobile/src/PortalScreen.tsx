@@ -4,10 +4,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { WebView } from "react-native-webview"
 import Constants from "expo-constants"
 import { getToken } from "./api"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette, type ThemeMode } from "./theme"
 
 /**
- * react-native-webview 14.0.1 — the current release — declares its props in a
+ * react-native-webview 13.15.0 — the release SDK 54 pins — declares its props in a
  * way React 19's JSX types collapse to `never`, so every prop below is reported
  * as unassignable. The component itself is fine; only the declaration is behind.
  *
@@ -36,7 +37,34 @@ const PORTAL_URL: string = (
   (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:3001/api"
 ).replace(/\/api\/?$/, "")
 
+/**
+ * Tells the portal which theme the app is in.
+ *
+ * The web app stores its choice under next-themes' default key, so writing that
+ * key is enough for the next load. The synthetic storage event is what makes it
+ * apply *now*: next-themes listens for `storage` so a change in one tab reaches
+ * the others, and the same listener serves just as well for a change that came
+ * from outside the page altogether.
+ *
+ * "system" is passed through rather than resolved, because the WebView reads
+ * the same `prefers-color-scheme` the native side does — sending "dark" would
+ * pin the portal to dark for someone who asked only to follow their phone.
+ */
+function themeScript(mode: ThemeMode): string {
+  return `
+    (function () {
+      try {
+        var theme = ${JSON.stringify(mode)};
+        window.localStorage.setItem('theme', theme);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: theme }));
+      } catch (e) {}
+    })();
+  `
+}
+
 export function PortalScreen({ userId }: { userId: number }) {
+  const { colors, mode } = useTheme()
+  const styles = useStyles(makeStyles)
   const [token, setToken] = useState<string | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const webRef = useRef<WebView | null>(null)
@@ -50,10 +78,24 @@ export function PortalScreen({ userId }: { userId: number }) {
     getToken().then(setToken)
   }, [userId])
 
+  // Keeps the portal in step with the app's theme while it is open. The
+  // injection below only runs on load, so without this, switching to dark on
+  // the Profile screen would leave the tab someone switches back to still lit.
+  //
+  // It has to sit up here with the other hooks, above the early returns: this
+  // screen returns a spinner until the token resolves, and a hook placed after
+  // that return runs on some renders and not others — which is exactly the
+  // "rendered more hooks than during the previous render" crash.
+  useEffect(() => {
+    // Null on the first pass, when the WebView has not mounted yet. That case
+    // is already covered by injectedJavaScriptBeforeContentLoaded.
+    webRef.current?.injectJavaScript(`${themeScript(mode)} true;`)
+  }, [mode])
+
   if (token === undefined) {
     return (
       <View style={styles.centre}>
-        <ActivityIndicator color="#0f4c34" size="large" />
+        <ActivityIndicator color={colors.accent} size="large" />
       </View>
     )
   }
@@ -83,6 +125,7 @@ export function PortalScreen({ userId }: { userId: number }) {
         window.localStorage.setItem('hrms_remember_me', 'true');
       } catch (e) {}
     })();
+    ${themeScript(mode)}
     true;
   `
 
@@ -138,7 +181,7 @@ export function PortalScreen({ userId }: { userId: number }) {
         startInLoadingState
         renderLoading={() => (
           <View style={styles.centre}>
-            <ActivityIndicator color="#0f4c34" size="large" />
+            <ActivityIndicator color={colors.accent} size="large" />
           </View>
         )}
         // The portal handles its own scrolling and pull-to-refresh would fight
@@ -155,7 +198,7 @@ export function PortalScreen({ userId }: { userId: number }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   // Explicit, because a WebView with no size collapses to nothing and looks
   // exactly like a page that failed to load.
@@ -170,5 +213,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(18),
     paddingVertical: scale(12), minHeight: scale(44), justifyContent: "center",
   },
-  retryText: { color: "#fff", fontWeight: "600", fontSize: scale(14) },
+  retryText: { color: colors.onFill, fontWeight: "600", fontSize: scale(14) },
 })

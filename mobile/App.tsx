@@ -11,7 +11,8 @@ import { BrowseScreen } from "./src/BrowseScreen"
 import { PortalScreen } from "./src/PortalScreen"
 import { MessagesScreen } from "./src/MessagesScreen"
 import { me, setUnauthorizedHandler, type SessionUser } from "./src/api"
-import { colors, scale, FONT_SCALE_CAP } from "./src/ui"
+import { scale, FONT_SCALE_CAP } from "./src/ui"
+import { ThemeProvider, useStyles, useTheme, type Palette } from "./src/theme"
 
 /**
  * The native HRMS app: sign in once, then either punch in with a fingerprint or
@@ -39,6 +40,10 @@ import { colors, scale, FONT_SCALE_CAP } from "./src/ui"
  * SafeAreaProvider wraps everything because React Native's own SafeAreaView does
  * nothing on Android — the screens below read real insets from this instead, so
  * the header clears the status bar and the tab bar clears the gesture pill.
+ *
+ * ThemeProvider sits inside it and above every screen, because the palette is
+ * read through a hook rather than imported: a screen that imported its colours
+ * would keep whichever theme was current when its file first loaded.
  */
 type Tab = "home" | "punch" | "browse" | "chat" | "portal"
 
@@ -56,7 +61,9 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <Shell />
+      <ThemeProvider>
+        <Shell />
+      </ThemeProvider>
     </SafeAreaProvider>
   )
 }
@@ -70,6 +77,8 @@ function Shell() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const insets = useSafeAreaInsets()
+  const { colors, isDark } = useTheme()
+  const styles = useStyles(makeStyles)
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -89,8 +98,8 @@ function Shell() {
   if (checking) {
     return (
       <View style={styles.centre}>
-        <StatusBar style="dark" />
-        <ActivityIndicator color={colors.brand} size="large" />
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <ActivityIndicator color={colors.accent} size="large" />
       </View>
     )
   }
@@ -98,7 +107,7 @@ function Shell() {
   if (!user) {
     return (
       <View style={styles.root}>
-        <StatusBar style="dark" />
+        <StatusBar style={isDark ? "light" : "dark"} />
         <LoginScreen onSignedIn={setUser} />
       </View>
     )
@@ -106,7 +115,7 @@ function Shell() {
 
   return (
     <View style={styles.root}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <View style={styles.body}>
         {/* Both stay mounted: unmounting the portal would throw away its
             scroll position and reload the whole SPA on every tab switch. */}
@@ -221,6 +230,9 @@ function TabButton({
   badge?: number
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
+
   return (
     <TouchableOpacity
       style={styles.tab}
@@ -234,7 +246,7 @@ function TabButton({
         <Ionicons
           name={active ? (icon.replace("-outline", "") as keyof typeof Ionicons.glyphMap) : icon}
           size={scale(21)}
-          color={active ? colors.brand : colors.faint}
+          color={active ? colors.accent : colors.faint}
         />
         {badge > 0 && (
           <View style={styles.tabBadge}>
@@ -254,7 +266,7 @@ function TabButton({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1 },
   page: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
@@ -280,10 +292,10 @@ const styles = StyleSheet.create({
     height: scale(16),
     borderRadius: scale(8),
     paddingHorizontal: scale(4),
-    backgroundColor: colors.danger,
+    backgroundColor: colors.dangerFill,
     alignItems: "center",
     justifyContent: "center",
   },
-  tabBadgeText: { color: "#fff", fontSize: scale(9), fontWeight: "700" },
-  tabTextActive: { color: colors.brand },
+  tabBadgeText: { color: colors.onFill, fontSize: scale(9), fontWeight: "700" },
+  tabTextActive: { color: colors.accent },
 })

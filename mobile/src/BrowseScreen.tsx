@@ -18,7 +18,8 @@ import { Ionicons } from "@expo/vector-icons"
 import { applyLeave, leaveTypes, rpc, select, type LeaveType, type LetterPayload, type SessionUser } from "./api"
 import { GenerateLetterSheet, LetterDocumentModal } from "./LetterScreen"
 import { SECTIONS, type RowAction, type RowView, type SectionDef, type Tone } from "./sections"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette } from "./theme"
 import { play, transformFor, MOTION_MS } from "./motion"
 
 /**
@@ -48,6 +49,7 @@ export function BrowseScreen({
   initialAction?: boolean
   onJumped?: () => void
 }) {
+  const styles = useStyles(makeStyles)
   const [open, setOpen] = useState<SectionDef | null>(null)
   const [triggerAction, setTriggerAction] = useState(false)
   const insets = useSafeAreaInsets()
@@ -112,6 +114,7 @@ export function BrowseScreen({
  * Each tile owns its own Animated.Value. Sharing one would move all ten.
  */
 function ModuleTile({ section, onOpen }: { section: SectionDef; onOpen: () => void }) {
+  const styles = useStyles(makeStyles)
   const v = useRef(new Animated.Value(0)).current
   const [reduceMotion, setReduceMotion] = useState(false)
 
@@ -160,6 +163,8 @@ function SectionList({
   onActionOpened?: () => void
   onBack: () => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [rows, setRows] = useState<Record<string, any>[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -283,12 +288,12 @@ function SectionList({
       />
 
       {rows === null ? (
-        <ActivityIndicator style={{ marginTop: scale(28) }} color={colors.brand} />
+        <ActivityIndicator style={{ marginTop: scale(28) }} color={colors.accent} />
       ) : (
         <FlatList
           data={shown}
           keyExtractor={(item) => item.key}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.brand} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />}
           contentContainerStyle={{ paddingBottom: scale(24) }}
           ListEmptyComponent={
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.empty}>
@@ -414,6 +419,8 @@ function NotePrompt({
   onClose: () => void
   onSubmit: (note: string) => Promise<void> | void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
   const short = note.trim().length < prompt.minLength
@@ -455,7 +462,7 @@ function NotePrompt({
               }}
             >
               {busy ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onFill} />
               ) : (
                 <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetPrimaryText}>
                   Send
@@ -478,6 +485,8 @@ function NotePrompt({
  * rather than explained.
  */
 function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const today = new Date().toISOString().slice(0, 10)
   const [types, setTypes] = useState<LeaveType[]>([])
   const [typeId, setTypeId] = useState<number | null>(null)
@@ -559,7 +568,7 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               disabled={busy || typeId === null}
             >
               {busy ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onFill} />
               ) : (
                 <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetPrimaryText}>
                   Apply
@@ -574,6 +583,8 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
 }
 
 function Row({ view, onPress }: { view: RowView; onPress?: () => void }) {
+  const styles = useStyles(makeStyles)
+  const tones = useStyles(makeTones)
   const Wrapper: any = onPress ? TouchableOpacity : View
   return (
     <Wrapper style={styles.row} onPress={onPress} activeOpacity={0.7}>
@@ -587,8 +598,8 @@ function Row({ view, onPress }: { view: RowView; onPress?: () => void }) {
           </Text>
         )}
         {!!view.badge && (
-          <View style={[styles.badge, toneStyle[view.tone ?? "neutral"]]}>
-            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.badgeText, toneText[view.tone ?? "neutral"]]}>
+          <View style={[styles.badge, tones.fill[view.tone ?? "neutral"]]}>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.badgeText, tones.text[view.tone ?? "neutral"]]}>
               {view.badge}
             </Text>
           </View>
@@ -603,23 +614,32 @@ function Row({ view, onPress }: { view: RowView; onPress?: () => void }) {
   )
 }
 
-const toneStyle: Record<Tone, { backgroundColor: string }> = {
-  neutral: { backgroundColor: "#eef2f7" },
-  success: { backgroundColor: "#dcfce7" },
-  warning: { backgroundColor: "#fef3c7" },
-  danger: { backgroundColor: "#fee2e2" },
-}
-const toneText: Record<Tone, { color: string }> = {
-  neutral: { color: "#475569" },
-  success: { color: "#166534" },
-  warning: { color: "#92400e" },
-  danger: { color: "#991b1b" },
-}
+/**
+ * The status pills, per theme.
+ *
+ * The pair is what carries the meaning: a pale fill with dark text in light
+ * mode, a dim fill of the same hue with bright text in dark mode. Inverting one
+ * without the other is what turns "Approved" into unreadable green-on-green.
+ */
+const makeTones = (colors: Palette) => ({
+  fill: {
+    neutral: { backgroundColor: colors.subtle },
+    success: { backgroundColor: colors.successBg },
+    warning: { backgroundColor: colors.warningBg },
+    danger: { backgroundColor: colors.dangerBg },
+  } as Record<Tone, { backgroundColor: string }>,
+  text: {
+    neutral: { color: colors.subtleText },
+    success: { color: colors.successText },
+    warning: { color: colors.warningText },
+    danger: { color: colors.dangerText },
+  } as Record<Tone, { color: string }>,
+})
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: scale(16) },
   header: { flexDirection: "row", alignItems: "center", gap: scale(12) },
-  back: { fontSize: scale(15), color: colors.brand, fontWeight: "600" },
+  back: { fontSize: scale(15), color: colors.accent, fontWeight: "600" },
   heading: { fontSize: scale(22), fontWeight: "700", color: colors.text },
   sub: { fontSize: scale(12), color: colors.muted, marginTop: scale(4) },
   grid: { marginTop: scale(16), flexDirection: "row", flexWrap: "wrap", gap: scale(10) },
@@ -678,7 +698,7 @@ const styles = StyleSheet.create({
     minHeight: scale(36),
     justifyContent: "center",
   },
-  headerBtnText: { color: "#fff", fontWeight: "700", fontSize: scale(13) },
+  headerBtnText: { color: colors.onFill, fontWeight: "700", fontSize: scale(13) },
 
   // the apply-leave sheet
   backdrop: {
@@ -706,7 +726,7 @@ const styles = StyleSheet.create({
   },
   chipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   chipText: { fontSize: scale(12), color: colors.muted, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
+  chipTextOn: { color: colors.onFill },
   dates: { flexDirection: "row", gap: scale(8) },
   date: { flex: 1, marginTop: 0, marginBottom: 0 },
   sheetButtons: { flexDirection: "row", gap: scale(8), marginTop: scale(4) },
@@ -720,5 +740,5 @@ const styles = StyleSheet.create({
   sheetGhost: { borderWidth: 1, borderColor: colors.border },
   sheetGhostText: { color: colors.muted, fontWeight: "600", fontSize: scale(14) },
   sheetPrimary: { backgroundColor: colors.brand },
-  sheetPrimaryText: { color: "#fff", fontWeight: "700", fontSize: scale(14) },
+  sheetPrimaryText: { color: colors.onFill, fontWeight: "700", fontSize: scale(14) },
 })

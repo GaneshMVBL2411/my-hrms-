@@ -31,7 +31,8 @@ import {
   STATES_TERMS,
   type LetterDoc,
 } from "./letters"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { lightColors, useStyles, useTheme, type Palette } from "./theme"
 
 /**
  * Offer and joining letters, issued and read on the phone.
@@ -60,6 +61,8 @@ export function LetterDocumentModal({
   preloaded?: LetterPayload | null
   onClose: () => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [payload, setPayload] = useState<LetterPayload | null>(preloaded ?? null)
   const [error, setError] = useState<string | null>(null)
   const insets = useSafeAreaInsets()
@@ -105,7 +108,7 @@ export function LetterDocumentModal({
           </TouchableOpacity>
           {doc && (
             <TouchableOpacity style={styles.shareBtn} onPress={share}>
-              <Ionicons name="share-outline" size={scale(15)} color="#fff" />
+              <Ionicons name="share-outline" size={scale(15)} color={colors.onFill} />
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.shareText}>
                 Share
               </Text>
@@ -118,7 +121,7 @@ export function LetterDocumentModal({
             {error}
           </Text>
         ) : !doc ? (
-          <ActivityIndicator style={{ marginTop: scale(28) }} color={colors.brand} />
+          <ActivityIndicator style={{ marginTop: scale(28) }} color={colors.accent} />
         ) : (
           <ScrollView
             contentContainerStyle={{ paddingBottom: insets.bottom + scale(28) }}
@@ -141,6 +144,7 @@ export function LetterDocumentModal({
  * to sign.
  */
 function LetterBody({ doc }: { doc: LetterDoc }) {
+  const styles = useStyles(makeStyles)
   return (
     <View style={styles.page}>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.company}>
@@ -270,6 +274,8 @@ export function GenerateLetterSheet({
   /** Handed the new letter so it can be shown straight away. */
   onGenerated: (letter: LetterPayload) => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [people, setPeople] = useState<EmployeeOption[] | null>(null)
   const [employeeId, setEmployeeId] = useState<number | null>(null)
   const [search, setSearch] = useState("")
@@ -379,7 +385,7 @@ export function GenerateLetterSheet({
               </Text>
             </TouchableOpacity>
           ) : people === null ? (
-            <ActivityIndicator style={{ marginTop: scale(12) }} color={colors.brand} />
+            <ActivityIndicator style={{ marginTop: scale(12) }} color={colors.accent} />
           ) : (
             <>
               <TextInput
@@ -479,7 +485,7 @@ export function GenerateLetterSheet({
             onPress={submit}
           >
             {busy ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onFill} />
             ) : (
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
                 Generate
@@ -492,10 +498,10 @@ export function GenerateLetterSheet({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: scale(16) },
   header: { flexDirection: "row", alignItems: "center", gap: scale(12), marginBottom: scale(8) },
-  back: { fontSize: scale(15), color: colors.brand, fontWeight: "600" },
+  back: { fontSize: scale(15), color: colors.accent, fontWeight: "600" },
   heading: { fontSize: scale(18), fontWeight: "700", color: colors.text },
   shareBtn: {
     marginLeft: "auto",
@@ -507,45 +513,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(14),
     minHeight: scale(36),
   },
-  shareText: { color: "#fff", fontWeight: "700", fontSize: scale(13) },
+  shareText: { color: colors.onFill, fontWeight: "700", fontSize: scale(13) },
   empty: { textAlign: "center", color: colors.muted, fontSize: scale(13), marginTop: scale(28) },
 
   // ------------------------------------------------------------- the page
+  // Pinned to the light palette rather than the active one, and deliberately.
+  // This block is a preview of a printed letter, not app chrome: the paper is
+  // white on paper, so the ink on it stays dark whatever theme the app is in.
+  // Theming it would give a dark-mode reader white text on a white page.
   page: {
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: lightColors.border,
     borderRadius: scale(10),
     padding: scale(18),
     marginTop: scale(6),
   },
-  company: { fontSize: scale(16), fontWeight: "700", color: colors.brand, textAlign: "center" },
+  company: { fontSize: scale(16), fontWeight: "700", color: lightColors.brand, textAlign: "center" },
   companyAddress: {
     fontSize: scale(11),
-    color: colors.muted,
+    color: lightColors.muted,
     textAlign: "center",
     marginTop: scale(2),
   },
-  rule: { height: 2, backgroundColor: colors.brand, marginTop: scale(10), opacity: 0.85 },
+  rule: { height: 2, backgroundColor: lightColors.brand, marginTop: scale(10), opacity: 0.85 },
   refRow: { flexDirection: "row", justifyContent: "space-between", gap: scale(8), marginTop: scale(10) },
-  ref: { fontSize: scale(10), color: colors.muted },
+  ref: { fontSize: scale(10), color: lightColors.muted },
   docTitle: {
     fontSize: scale(14),
     fontWeight: "700",
-    color: colors.brand,
+    color: lightColors.brand,
     textAlign: "center",
     letterSpacing: 0.6,
     marginTop: scale(16),
   },
-  recipient: { fontSize: scale(13), fontWeight: "600", color: colors.text },
-  recipientAddress: { fontSize: scale(12), color: colors.muted, marginTop: scale(2) },
-  subject: { fontSize: scale(12.5), fontWeight: "700", color: colors.text, marginTop: scale(14) },
-  salutation: { fontSize: scale(13), color: colors.text, marginTop: scale(12) },
-  paragraph: { fontSize: scale(13), lineHeight: scale(20), color: colors.text, marginTop: scale(11) },
+  recipient: { fontSize: scale(13), fontWeight: "600", color: lightColors.text },
+  recipientAddress: { fontSize: scale(12), color: lightColors.muted, marginTop: scale(2) },
+  subject: { fontSize: scale(12.5), fontWeight: "700", color: lightColors.text, marginTop: scale(14) },
+  salutation: { fontSize: scale(13), color: lightColors.text, marginTop: scale(12) },
+  paragraph: { fontSize: scale(13), lineHeight: scale(20), color: lightColors.text, marginTop: scale(11) },
   note: {
     fontSize: scale(12.5),
     lineHeight: scale(19),
-    color: colors.muted,
+    color: lightColors.muted,
     fontStyle: "italic",
     marginTop: scale(11),
   },
@@ -566,12 +576,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eaf0ec",
   },
   detailLast: { borderBottomWidth: 0 },
-  detailLabel: { fontSize: scale(12), color: colors.muted },
-  detailValue: { fontSize: scale(12), fontWeight: "600", color: colors.text, flexShrink: 1, textAlign: "right" },
+  detailLabel: { fontSize: scale(12), color: lightColors.muted },
+  detailValue: { fontSize: scale(12), fontWeight: "600", color: lightColors.text, flexShrink: 1, textAlign: "right" },
   signBlock: { flexDirection: "row", gap: scale(16), marginTop: scale(30) },
-  signLine: { fontSize: scale(12.5), color: colors.text },
-  signName: { fontSize: scale(12.5), fontWeight: "600", color: colors.text, marginTop: scale(30) },
-  signRole: { fontSize: scale(10.5), color: colors.muted, marginTop: scale(2) },
+  signLine: { fontSize: scale(12.5), color: lightColors.text },
+  signName: { fontSize: scale(12.5), fontWeight: "600", color: lightColors.text, marginTop: scale(30) },
+  signRole: { fontSize: scale(10.5), color: lightColors.muted, marginTop: scale(2) },
 
   // -------------------------------------------------------------- the form
   label: { fontSize: scale(12), fontWeight: "700", color: colors.muted, marginTop: scale(16) },
@@ -599,7 +609,7 @@ const styles = StyleSheet.create({
   },
   chipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   chipText: { fontSize: scale(12), color: colors.text, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
+  chipTextOn: { color: colors.onFill },
   person: {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -617,14 +627,14 @@ const styles = StyleSheet.create({
     gap: scale(10),
     backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.brand,
+    borderColor: colors.accent,
     borderRadius: scale(10),
     padding: scale(12),
     marginTop: scale(6),
   },
   chosenName: { fontSize: scale(14), fontWeight: "700", color: colors.text },
   chosenRole: { fontSize: scale(11.5), color: colors.muted, marginTop: scale(2) },
-  change: { fontSize: scale(12), fontWeight: "700", color: colors.brand },
+  change: { fontSize: scale(12), fontWeight: "700", color: colors.accent },
   primary: {
     backgroundColor: colors.brand,
     borderRadius: scale(10),
@@ -633,5 +643,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: scale(22),
   },
-  primaryText: { color: "#fff", fontWeight: "700", fontSize: scale(15) },
+  primaryText: { color: colors.onFill, fontWeight: "700", fontSize: scale(15) },
 })

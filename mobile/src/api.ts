@@ -301,9 +301,12 @@ export interface Message {
   sender_name: string
   recipient_id: number
   recipient_name: string
-  body: string
+  /** Null once withdrawn: the view stops returning the text, the row keeps it. */
+  body: string | null
   read_at: string | null
   created_at: string
+  edited_at: string | null
+  deleted_at: string | null
 }
 
 export interface Contact {
@@ -338,7 +341,7 @@ export async function messagesWith(userId: number): Promise<Message[]> {
     body: JSON.stringify({
       table: "message_detail",
       action: "select",
-      columns: "id, sender_id, sender_name, recipient_id, recipient_name, body, read_at, created_at",
+      columns: "id, sender_id, sender_name, recipient_id, recipient_name, body, read_at, created_at, edited_at, deleted_at",
       or: `sender_id.eq.${userId},recipient_id.eq.${userId}`,
       order: [{ column: "created_at", ascending: true }],
     }),
@@ -360,6 +363,44 @@ export async function sendMessage(recipientId: number, body: string): Promise<vo
       table: "messages",
       action: "insert",
       payload: { recipient_id: recipientId, body: body.trim() },
+    }),
+  })
+}
+
+/**
+ * Corrects a message already sent.
+ *
+ * The 15-minute window, who may do it, and keeping the previous text are all
+ * enforced in the database — see migration 0030. Nothing here is a check the
+ * caller could skip; this only carries the new text.
+ */
+export async function editMessage(id: number, body: string): Promise<void> {
+  await request("/query", {
+    method: "POST",
+    body: JSON.stringify({
+      table: "messages",
+      action: "update",
+      payload: { body: body.trim() },
+      filters: [{ column: "id", op: "eq", value: id }],
+    }),
+  })
+}
+
+/**
+ * Withdraws a message: it keeps its place in the thread and loses its text.
+ *
+ * A timestamp rather than a DELETE, and the row is never removed — the sent
+ * text stays on the record even though neither participant can read it back.
+ * The server overwrites whatever instant is sent here with its own.
+ */
+export async function deleteMessage(id: number): Promise<void> {
+  await request("/query", {
+    method: "POST",
+    body: JSON.stringify({
+      table: "messages",
+      action: "update",
+      payload: { deleted_at: new Date().toISOString() },
+      filters: [{ column: "id", op: "eq", value: id }],
     }),
   })
 }

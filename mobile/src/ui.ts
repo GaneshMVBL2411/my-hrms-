@@ -58,14 +58,11 @@ export const FONT_SCALE_CAP = 1.25
  */
 export const ANDROID_STATUS_BAR = Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0
 
-export const colors = {
-  bg: "#f8fafc",
-  card: "#ffffff",
-  border: "#e2e8f0",
-  text: "#0f172a",
-  muted: "#64748b",
-  faint: "#94a3b8",
-  brand: "#0f4c34",
-  danger: "#b91c1c",
-  warn: "#b45309",
-}
+/**
+ * Colours live in `theme.tsx`, not here.
+ *
+ * They used to be a constant in this file, which is exactly why dark mode did
+ * not work: `StyleSheet.create` reads its values once at import, so a screen
+ * that closed over this object kept the palette it was born with. They are now
+ * passed into each screen's stylesheet instead — see `useStyles` there.
+ */

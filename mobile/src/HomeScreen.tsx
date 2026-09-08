@@ -3,7 +3,8 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { select, today as fetchToday, type SessionUser, type TodayRecord } from "./api"
-import { colors, scale, FONT_SCALE_CAP } from "./ui"
+import { scale, FONT_SCALE_CAP } from "./ui"
+import { useStyles, useTheme, type Palette } from "./theme"
 
 /**
  * The landing screen: what today looks like, and the four things people came to
@@ -26,6 +27,8 @@ export function HomeScreen({
   onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies") => void
   onOpenProfile: () => void
 }) {
+  const { colors } = useTheme()
+  const styles = useStyles(makeStyles)
   const [today, setToday] = useState<TodayRecord | null>(null)
   const [pendingLeaves, setPendingLeaves] = useState<number | null>(null)
   const [myTasks, setMyTasks] = useState<number | null>(null)
@@ -94,7 +97,7 @@ export function HomeScreen({
             await load()
             setRefreshing(false)
           }}
-          tintColor={colors.brand}
+          tintColor={colors.accent}
         />
       }
     >
@@ -137,7 +140,7 @@ export function HomeScreen({
           <Clock label="Out" value={time(today?.check_out)} />
         </View>
         <View style={styles.punchCta}>
-          <Ionicons name="finger-print" size={scale(16)} color="#fff" />
+          <Ionicons name="finger-print" size={scale(16)} color={colors.onFill} />
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.punchCtaText}>
             {checkedOut ? "View attendance" : checkedIn ? "Check out" : "Check in"}
           </Text>
@@ -206,7 +209,7 @@ export function HomeScreen({
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: scale(20) }} color={colors.brand} />
+        <ActivityIndicator style={{ marginTop: scale(20) }} color={colors.accent} />
       ) : (
         notice && (
           <>
@@ -229,6 +232,7 @@ export function HomeScreen({
 }
 
 function Clock({ label, value }: { label: string; value: string }) {
+  const styles = useStyles(makeStyles)
   return (
     <View style={{ flex: 1 }}>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.clockLabel}>
@@ -254,6 +258,7 @@ function Tile({
   label: string
   onPress: () => void
 }) {
+  const styles = useStyles(makeStyles)
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.tileIcon, { backgroundColor: tint + "1a" }]}>
@@ -280,6 +285,7 @@ function Action({
   label: string
   onPress: () => void
 }) {
+  const styles = useStyles(makeStyles)
   return (
     <TouchableOpacity style={styles.action} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.actionIcon, { backgroundColor: tint + "1a" }]}>
@@ -304,7 +310,7 @@ function time(value: string | null | undefined) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { padding: scale(16), paddingBottom: scale(28), gap: scale(12) },
   header: { flexDirection: "row", alignItems: "center", gap: scale(12) },
@@ -318,7 +324,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: scale(14) },
+  avatarText: { color: colors.onFill, fontWeight: "700", fontSize: scale(14) },
 
   punchCard: {
     backgroundColor: colors.card,
@@ -345,7 +351,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(10),
     minHeight: scale(46),
   },
-  punchCtaText: { color: "#fff", fontWeight: "700", fontSize: scale(15) },
+  punchCtaText: { color: colors.onFill, fontWeight: "700", fontSize: scale(15) },
 
   tiles: { flexDirection: "row", gap: scale(10) },
   tile: {
