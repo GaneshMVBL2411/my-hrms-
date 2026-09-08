@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
@@ -81,31 +81,42 @@ function Shell() {
   const styles = useStyles(makeStyles)
 
   /**
-   * Android's back gesture, which until now closed the app from anywhere.
+   * Android's back gesture, which before this closed the app from anywhere.
    *
    * With a hand-rolled tab bar there is no navigator to unwind, so nothing
    * claimed the press and it fell through to the OS default — quitting, even
-   * three levels into Modules. The screens register their own handlers for
-   * their internal depth; this is the last one to run, and it treats Home as
-   * the bottom of the stack the way a tabbed app does.
+   * three levels into Modules. The screens handle their own internal depth;
+   * this is the fallback beneath all of them, and it treats Home as the bottom
+   * of the stack the way a tabbed app does.
+   *
+   * Registered once, with the live values read from a ref rather than from the
+   * closure. That is not a detail: BackHandler calls the most recently added
+   * listener first, so an effect that re-subscribed on every tab change kept
+   * jumping ahead of the screens' own handlers, and back from an open module
+   * would have gone to Home instead of closing the module. Subscribing once at
+   * mount makes this permanently the oldest listener, and therefore the last
+   * one consulted.
    *
    * Returning false is what actually lets the app close, so Home still exits
    * on the first press rather than trapping anyone in it.
    */
+  const backState = useRef({ profileOpen, tab })
+  backState.current = { profileOpen, tab }
+
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (profileOpen) {
+      if (backState.current.profileOpen) {
         setProfileOpen(false)
         return true
       }
-      if (tab !== "home") {
+      if (backState.current.tab !== "home") {
         setTab("home")
         return true
       }
       return false
     })
     return () => sub.remove()
-  }, [profileOpen, tab])
+  }, [])
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -207,7 +218,7 @@ function Shell() {
         >
           {/* Keyed by account: a new sign-in gets a new WebView rather than
               the one the previous person left behind. */}
-          <PortalScreen key={user.id} userId={user.id} />
+          <PortalScreen key={user.id} active={tab === "portal"} userId={user.id} />
         </View>
       </View>
 

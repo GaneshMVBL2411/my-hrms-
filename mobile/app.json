@@ -16,7 +16,8 @@
     },
     "android": {
       "package": "com.whhoohhpath.hrms",
-      "softwareKeyboardLayoutMode": "pan",
+      "//softwareKeyboardLayoutMode": "resize, not pan. pan slides the whole window to reveal the focused native view, and the portal is one native view holding an entire web page — Android cannot know where the input inside it is, so tapping a field in a form moved nothing and the keyboard covered it. resize shrinks the window instead, which lets the page scroll its own focused input into view, and is what KeyboardAvoidingView expects on Android for the native screens.",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo-mark.png",
         "backgroundColor": "#ffffff"

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { WebView } from "react-native-webview"
 import Constants from "expo-constants"
@@ -62,13 +62,33 @@ function themeScript(mode: ThemeMode): string {
   `
 }
 
-export function PortalScreen({ userId }: { userId: number }) {
+export function PortalScreen({ active, userId }: { active: boolean; userId: number }) {
   const { colors, mode } = useTheme()
   const styles = useStyles(makeStyles)
   const [token, setToken] = useState<string | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const webRef = useRef<WebView | null>(null)
+  const [canGoBack, setCanGoBack] = useState(false)
   const insets = useSafeAreaInsets()
+
+  /**
+   * Back goes back *inside* the portal, which is what someone three screens
+   * into a form expects it to do.
+   *
+   * Without this the shell's fallback caught the press and jumped to Home, so
+   * the only way out of a task form was to lose it. The WebView holds its own
+   * history; this hands the press to it for as long as there is somewhere to
+   * go, and lets it fall through to the shell once the portal is back at its
+   * first page — so a second press still leaves the tab.
+   */
+  useEffect(() => {
+    if (!active || !canGoBack) return
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      webRef.current?.goBack()
+      return true
+    })
+    return () => sub.remove()
+  }, [active, canGoBack])
 
   useEffect(() => {
     // Re-read on every account change. Read once, this held the token of
@@ -172,6 +192,7 @@ export function PortalScreen({ userId }: { userId: number }) {
          */
         userAgent="HRMSMobile/1.0"
         injectedJavaScriptBeforeContentLoaded={injectSession}
+        onNavigationStateChange={(nav: { canGoBack: boolean }) => setCanGoBack(nav.canGoBack)}
         onError={() => setFailed(true)}
         onHttpError={(e: { nativeEvent: { url: string } }) => {
           // 4xx on a sub-resource is normal and not worth a full-screen error;
