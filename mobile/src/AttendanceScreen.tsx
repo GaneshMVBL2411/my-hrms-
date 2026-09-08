@@ -40,6 +40,24 @@ import { Logo } from "./Logo"
  * Every size here comes from scale() and every Text caps its font multiplier,
  * so the layout holds on a small phone and on one with system text enlarged.
  */
+/** How long a punch will wait for a fresh fix before going without one. */
+const LOCATION_DEADLINE_MS = 6000
+
+/**
+ * Gives a promise a deadline, resolving null rather than rejecting when it
+ * passes.
+ *
+ * The work is not cancelled — there is no way to cancel a position request —
+ * it is simply no longer waited on. Nothing here is worth failing a punch for,
+ * so the timeout produces an absent location, not an error.
+ */
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    work.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ])
+}
+
 export function AttendanceScreen({
   active,
   user,
@@ -183,9 +201,20 @@ export function AttendanceScreen({
     try {
       const { granted } = await Location.requestForegroundPermissionsAsync()
       if (!granted) return null
-      const reading = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      })
+
+      // A cold GPS fix can take the better part of ten seconds, and a punch
+      // that sits there while it settles feels broken. Whatever the phone
+      // already has is used when it is recent enough to still describe where
+      // someone is standing; only a stale or missing one waits for a new fix.
+      const known = await Location.getLastKnownPositionAsync({ maxAge: 60_000 })
+      const reading =
+        known ??
+        (await withDeadline(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          LOCATION_DEADLINE_MS
+        ))
+      if (!reading) return null
+
       return {
         latitude: reading.coords.latitude,
         longitude: reading.coords.longitude,
@@ -201,14 +230,23 @@ export function AttendanceScreen({
   async function punch(direction: "in" | "out") {
     setBusy(direction)
     try {
+      // Started before the fingerprint prompt and collected after it. The fix
+      // arrives while someone's finger is on the sensor instead of afterwards,
+      // which is the difference between a punch that responds and one that
+      // appears to hang.
+      //
+      // Running it early does not make it part of what authorises the punch:
+      // a location is not evidence of identity, it is attached to a signature
+      // that has already been checked, and if the signature fails the reading
+      // is discarded with everything else.
+      const placePromise = capturePlace()
+
       const challenge = await deviceChallenge()
       const signature = await signChallenge(challenge, user.id)
 
-      // Only now, with the biometric already passed. Both are evidence
-      // attached to a punch that is already authorised, so both run after the
-      // signature and neither can prevent one.
+      // Only now, with the biometric already passed.
       const photo = await capturePhoto()
-      const place = await capturePlace()
+      const place = await placePromise
 
       // The server's own answer, not the fact that a photo was sent: it drops
       // anything over 2MB and still records the punch, so trusting the local
