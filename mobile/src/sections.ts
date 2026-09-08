@@ -168,6 +168,27 @@ const statusTone: Record<string, Tone> = {
 }
 
 /** "2026-09-05" -> "5 Sep". Dates in a list are for orientation, not filing. */
+/**
+ * A punch's coordinates, short enough to sit on a row.
+ *
+ * Four decimal places is roughly eleven metres, which is as fine as a phone
+ * fix is worth reading; printing the six the column stores would imply a
+ * precision the reading does not have.
+ *
+ * The accuracy radius is shown alongside rather than hidden, because a pair of
+ * coordinates on their own invites "they were not at the office" from a
+ * reading that was never good enough to say so.
+ */
+export function placeLabel(lat: unknown, lon: unknown, accuracy: unknown): string {
+  const n = (v: unknown) => (v == null ? null : Number(v))
+  const la = n(lat)
+  const lo = n(lon)
+  if (la === null || lo === null || Number.isNaN(la) || Number.isNaN(lo)) return ""
+  const radius = n(accuracy)
+  const within = radius === null || Number.isNaN(radius) ? "" : ` ±${Math.round(radius)}m`
+  return `${la.toFixed(4)}, ${lo.toFixed(4)}${within}`
+}
+
 function shortDate(value: string | null | undefined): string {
   if (!value) return ""
   const d = new Date(value)
@@ -356,13 +377,15 @@ export const SECTIONS: SectionDef[] = [
     empty: "No attendance recorded.",
     table: "attendance_detail",
     query: {
-      columns: "id, employee_name, date, check_in, check_out, status, working_hours, is_late, check_in_method",
+      columns: "id, employee_name, date, check_in, check_out, status, working_hours, is_late, check_in_method, check_in_latitude, check_in_longitude, check_in_accuracy_m",
       order: [{ column: "date", ascending: false }],
       limit: 120,
     },
     row: (r) => ({
       title: shortDate(r.date),
-      subtitle: `${clockTime(r.check_in)} – ${clockTime(r.check_out)}${r.check_in_method === "biometric" ? " · biometric" : ""}`,
+      subtitle: `${clockTime(r.check_in)} – ${clockTime(r.check_out)}${
+        r.check_in_method === "biometric" ? " · biometric" : ""
+      }${r.check_in_latitude != null ? " · " + placeLabel(r.check_in_latitude, r.check_in_longitude, r.check_in_accuracy_m) : ""}`,
       meta: r.working_hours != null ? `${Number(r.working_hours)}h` : "",
       // "Late" is the more useful of the two on a row that already shows times,
       // so it wins the single badge slot when both apply.

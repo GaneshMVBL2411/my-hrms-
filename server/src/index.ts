@@ -650,8 +650,10 @@ async function recordPunch(
   client: import("pg").PoolClient,
   user: { userId: number; companyId: number | null },
   direction: "in" | "out",
-  photo: unknown
-): Promise<{ id: number | null; photoStored: boolean }> {
+  photo: unknown,
+  location: unknown
+): Promise<{ id: number | null; photoStored: boolean; locationStored: boolean }> {
+  const place = readPlace(location)
   // The selfie is evidence attached to the record, never the thing that
   // authorises it: it is stored after the proof has already passed, and a
   // failure to store one does not change whether the punch is valid.
@@ -695,8 +697,51 @@ async function recordPunch(
   }
 
   const fn = direction === "in" ? "attendance_check_in_verified" : "attendance_check_out_verified"
-  const { rows } = await client.query(`select public.${fn}('biometric', $1) as result`, [photoId])
-  return { id: rows[0]?.result ?? null, photoStored: photoId !== null }
+  const { rows } = await client.query(
+    `select public.${fn}('biometric', $1, $2, $3, $4) as result`,
+    [photoId, place.latitude, place.longitude, place.accuracy]
+  )
+  return {
+    id: rows[0]?.result ?? null,
+    photoStored: photoId !== null,
+    locationStored: place.latitude !== null,
+  }
+}
+
+/**
+ * The coordinates a punch claims, or nulls.
+ *
+ * Read defensively because this arrives from a phone: a reading that is not a
+ * finite number, or not a point on Earth, is dropped rather than stored or
+ * raised. Losing the location off an otherwise valid punch is a far smaller
+ * problem than refusing an attendance record whose biometric proof already
+ * passed — the same reasoning as the photo.
+ *
+ * Longitude and latitude are only kept as a pair. One without the other is not
+ * a place, and storing half of it would put every such punch on the meridian
+ * or the equator.
+ */
+function readPlace(location: unknown): {
+  latitude: number | null
+  longitude: number | null
+  accuracy: number | null
+} {
+  const empty = { latitude: null, longitude: null, accuracy: null }
+  if (typeof location !== "object" || location === null) return empty
+
+  const { latitude, longitude, accuracy } = location as Record<string, unknown>
+  const finite = (value: unknown, limit: number) =>
+    typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= limit ? value : null
+
+  const lat = finite(latitude, 90)
+  const lon = finite(longitude, 180)
+  if (lat === null || lon === null) return empty
+
+  // Accuracy is advisory, so a missing or absurd radius costs the radius and
+  // not the reading. Capped because a "location" good to 50km is a cell tower,
+  // and storing that as a number invites it being drawn as a point.
+  const acc = finite(accuracy, 50_000)
+  return { latitude: lat, longitude: lon, accuracy: acc === null ? null : Math.round(acc * 10) / 10 }
 }
 
 // ------------------------------------------------- native app device auth
@@ -742,11 +787,11 @@ app.post("/device/punch/:direction", requireAuth, authLimiter, fileUploadBodyPar
     return res.status(404).json({ error: "Unknown punch direction" })
   }
 
-  const { signature, photo } = req.body ?? {}
+  const { signature, photo, location } = req.body ?? {}
   try {
     const result = await withSession(req.user!, async (client) => {
       await verifyDeviceSignature(client, req.user!.userId, typeof signature === "string" ? signature : "")
-      return recordPunch(client, req.user!, direction, photo)
+      return recordPunch(client, req.user!, direction, photo, location)
     })
     res.json(result)
   } catch (error) {
@@ -847,12 +892,12 @@ app.post("/webauthn/punch/:direction", requireAuth, authLimiter, async (req, res
     return res.status(404).json({ error: "Unknown punch direction" })
   }
 
-  const { response, photo } = req.body ?? {}
+  const { response, photo, location } = req.body ?? {}
 
   try {
     const result = await withSession(req.user!, async (client) => {
       await verifyAuthentication(client, req.user!.userId, response ?? {})
-      return recordPunch(client, req.user!, direction, photo)
+      return recordPunch(client, req.user!, direction, photo, location)
     })
 
     res.json(result)

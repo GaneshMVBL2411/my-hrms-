@@ -11,12 +11,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { CameraView, useCameraPermissions } from "expo-camera"
+import * as Location from "expo-location"
 import {
   deviceChallenge,
   devicePunch,
   logout,
   registerDevice,
   today as fetchToday,
+  type PunchPlace,
   type SessionUser,
   type TodayRecord,
 } from "./api"
@@ -161,23 +163,64 @@ export function AttendanceScreen({
     }
   }
 
+  /**
+   * Where this punch is being made from, if the person allows it.
+   *
+   * Asked for at the moment of the punch rather than when the tab opens: a
+   * permission prompt that arrives while someone is reading their hours is
+   * unexplained, and one that arrives as they check in explains itself.
+   *
+   * Refusal is a normal outcome and returns null. The signature is what
+   * authorises attendance, so a punch without coordinates is still a punch —
+   * the alternative, refusing to record someone's day because they declined a
+   * location prompt, would make this feature a way to lose attendance.
+   *
+   * Balanced accuracy, not the highest: the question is which building
+   * somebody is at, and asking for the best possible fix costs several seconds
+   * of GPS settling for precision nobody reads.
+   */
+  async function capturePlace(): Promise<PunchPlace | null> {
+    try {
+      const { granted } = await Location.requestForegroundPermissionsAsync()
+      if (!granted) return null
+      const reading = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      })
+      return {
+        latitude: reading.coords.latitude,
+        longitude: reading.coords.longitude,
+        accuracy: reading.coords.accuracy ?? null,
+      }
+    } catch {
+      // No fix indoors, location services off, a timeout. None of these are
+      // reasons to stop someone checking in.
+      return null
+    }
+  }
+
   async function punch(direction: "in" | "out") {
     setBusy(direction)
     try {
       const challenge = await deviceChallenge()
       const signature = await signChallenge(challenge, user.id)
 
-      // Only now, with the biometric already passed.
+      // Only now, with the biometric already passed. Both are evidence
+      // attached to a punch that is already authorised, so both run after the
+      // signature and neither can prevent one.
       const photo = await capturePhoto()
+      const place = await capturePlace()
 
       // The server's own answer, not the fact that a photo was sent: it drops
       // anything over 2MB and still records the punch, so trusting the local
       // variable here would report a photo saved that never was.
-      const { photoStored } = await devicePunch(direction, signature, photo)
+      const { photoStored, locationStored } = await devicePunch(direction, signature, photo, place)
       await refresh()
+      // Says what was actually recorded rather than what was attempted, so
+      // someone who declined a permission is told, not quietly assumed.
+      const kept = [photoStored ? "photo" : null, locationStored ? "location" : null].filter(Boolean)
       Alert.alert(
         direction === "in" ? "Checked in" : "Checked out",
-        photoStored ? "Verified, photo saved" : "Verified"
+        kept.length ? `Verified, with ${kept.join(" and ")}` : "Verified"
       )
     } catch (e) {
       const message = (e as Error).message || ""
@@ -292,7 +335,8 @@ export function AttendanceScreen({
             <View style={styles.cameraNote}>
               <Ionicons name="camera-outline" size={scale(17)} color={colors.muted} />
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.cameraNoteText}>
-                A photo is taken automatically once your fingerprint is confirmed.
+                A photo and your location are recorded once your fingerprint is
+                confirmed, so the record shows where you marked attendance.
               </Text>
             </View>
           ) : (

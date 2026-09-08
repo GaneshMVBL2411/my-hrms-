@@ -13,7 +13,8 @@
         "NSFaceIDUsageDescription": "Face ID confirms it is you checking in or out, so attendance cannot be punched on your behalf.",
         "NSCameraUsageDescription": "A photo is taken with each check-in and attached to the record, so attendance can be reviewed.",
         "UIFileSharingEnabled": true,
-        "LSSupportsOpeningDocumentsInPlace": true
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "NSLocationWhenInUseUsageDescription": "Your location is recorded with each check-in and check-out, so the attendance record shows where it was marked from."
       }
     },
     "android": {
@@ -28,7 +29,9 @@
         "android.permission.CAMERA",
         "android.permission.USE_BIOMETRIC",
         "android.permission.RECORD_AUDIO",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "plugins": [
@@ -59,7 +62,13 @@
           }
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is recorded with each check-in and check-out, so the attendance record shows where it was marked from."
+        }
+      ]
     ],
     "extra": {
       "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",

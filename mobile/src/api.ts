@@ -181,14 +181,23 @@ export async function deviceChallenge(): Promise<string> {
   return body.challenge as string
 }
 
+/** Where a punch was made, when the phone would say and the person allowed it. */
+export interface PunchPlace {
+  latitude: number
+  longitude: number
+  /** The radius the device reported, in metres. Null when it would not say. */
+  accuracy: number | null
+}
+
 export async function devicePunch(
   direction: "in" | "out",
   signature: string,
-  photo: string | null
-): Promise<{ id: number; photoStored: boolean }> {
+  photo: string | null,
+  location: PunchPlace | null
+): Promise<{ id: number; photoStored: boolean; locationStored: boolean }> {
   return request(`/device/punch/${direction}`, {
     method: "POST",
-    body: JSON.stringify({ signature, photo }),
+    body: JSON.stringify({ signature, photo, location }),
   })
 }
 

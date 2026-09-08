@@ -14,6 +14,10 @@ import pg from "pg"
  *         windows, and the whole value of that is what it still refuses —
  *         a hard delete, a re-pointed recipient, an edit after the window,
  *         a participant reading the edit history back.
+ *   0032  a punch now records where it was made from. The coordinates are
+ *         optional by design — the signature is what authorises attendance —
+ *         so both halves are checked: a location given is kept, and a punch
+ *         without one is still a punch.
  *   0031  files was written when it held employee photos uploaded by HR, so
  *         app_is_hr() guarded every write. An employee photographing
  *         themselves at their own check-in was refused, and the punch was
@@ -328,6 +332,52 @@ async function runTests() {
     )
     assert.equal(ordinary[0]!.n, 1, "a non-attendance file MUST stay readable across the company")
     console.log("  PASSED: only attendance/ is narrowed; the rest of the table is as it was.")
+
+    // -------------------------------------------------------------------------
+    // TEST 10: 0032 — a punch carries where it was made from
+    // -------------------------------------------------------------------------
+    console.log("\nTest 10: Verifying a punch stores its location, and works without one...")
+    const { rows: linked } = await client.query<{ id: number; company_id: number }>(
+      `select u.id, u.company_id from public.users u
+        join public.employees e on e.user_id = u.id
+       where u.company_id is not null order by u.id limit 1`
+    )
+    if (!linked.length) {
+      console.log("  SKIPPED: no user with an employee profile to punch as.")
+    } else {
+      const puncher = linked[0]!
+      await as(puncher.id, puncher.company_id)
+
+      await client.query("savepoint located")
+      const { rows: withPlace } = await client.query<{ id: number }>(
+        "select public.attendance_check_in_verified('biometric', null, $1, $2, $3) as id",
+        [12.9716, 77.5946, 15.5]
+      )
+      const { rows: stored } = await client.query<{ lat: string; lon: string; acc: string }>(
+        `select check_in_latitude as lat, check_in_longitude as lon, check_in_accuracy_m as acc
+           from public.attendance_detail where id = $1`,
+        [withPlace[0]!.id]
+      )
+      assert.equal(Number(stored[0]!.lat), 12.9716, "the latitude must reach attendance_detail")
+      assert.equal(Number(stored[0]!.lon), 77.5946, "the longitude must reach attendance_detail")
+      assert.equal(Number(stored[0]!.acc), 15.5, "the accuracy radius must be kept, not rounded away")
+
+      // The same punch with nothing to say about location is still a punch:
+      // refusing to record someone's day because they declined a permission
+      // would turn this feature into a way to lose attendance.
+      await client.query("rollback to savepoint located")
+      const { rows: without } = await client.query<{ id: number }>(
+        "select public.attendance_check_in_verified('biometric') as id"
+      )
+      const { rows: bare } = await client.query<{ lat: string | null; punched: boolean }>(
+        `select check_in_latitude as lat, check_in is not null as punched
+           from public.attendance_records where id = $1`,
+        [without[0]!.id]
+      )
+      assert.equal(bare[0]!.lat, null, "a punch without a location must store none")
+      assert(bare[0]!.punched, "a punch without a location MUST still be recorded")
+      console.log("  PASSED: the location is stored when given, and optional when not.")
+    }
 
     console.log("\n=== ALL MESSAGE + ATTENDANCE POLICY TESTS PASSED ===")
   } finally {
