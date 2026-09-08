@@ -660,18 +660,37 @@ async function recordPunch(
     const base64 = photo.slice(photo.indexOf(",") + 1)
     const bytes = Buffer.from(base64, "base64")
     if (bytes.length > 0 && bytes.length <= 2_000_000) {
-      const { rows } = await client.query<{ id: string }>(
-        `insert into public.files (company_id, path, mime_type, size_bytes, data, uploaded_by)
-         values ($1, $2, 'image/jpeg', $3, $4, $5) returning id`,
-        [
-          user.companyId,
-          `attendance/${user.userId}/${Date.now()}.jpg`,
-          bytes.length,
-          bytes,
-          user.userId,
-        ]
-      )
-      photoId = rows[0]?.id ?? null
+      // Inside a savepoint, because the sentence above has to be true in the
+      // code and not only in the comment. This runs in the same transaction as
+      // the punch, so a rejected insert — an RLS policy, a constraint, a full
+      // disk — aborted the whole thing and threw away an attendance record
+      // whose biometric proof had already passed. The savepoint confines the
+      // failure to the photo: the punch is still written, photoStored comes
+      // back false, and the app says "Verified" rather than "Verified, photo
+      // saved".
+      await client.query("savepoint attendance_photo")
+      try {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into public.files (company_id, path, mime_type, size_bytes, data, uploaded_by)
+           values ($1, $2, 'image/jpeg', $3, $4, $5) returning id`,
+          [
+            user.companyId,
+            `attendance/${user.userId}/${Date.now()}.jpg`,
+            bytes.length,
+            bytes,
+            user.userId,
+          ]
+        )
+        photoId = rows[0]?.id ?? null
+        await client.query("release savepoint attendance_photo")
+      } catch (error) {
+        await client.query("rollback to savepoint attendance_photo")
+        // Logged rather than swallowed: a punch that silently stops carrying
+        // its photo is exactly the kind of thing nobody notices for months.
+        console.error(
+          `[attendance] photo not stored for user ${user.userId}: ${(error as Error).message}`
+        )
+      }
     }
   }
 
