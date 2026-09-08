@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
+  BackHandler,
   FlatList,
   Modal,
   RefreshControl,
@@ -38,6 +39,7 @@ import { play, transformFor, MOTION_MS } from "./motion"
  * copy someone remembered.
  */
 export function BrowseScreen({
+  active,
   user,
   jumpTo,
   initialAction,
@@ -48,11 +50,30 @@ export function BrowseScreen({
   jumpTo?: string | null
   initialAction?: boolean
   onJumped?: () => void
+  /**
+   * Whether this tab is the one on screen.
+   *
+   * Every tab stays mounted so the portal keeps its state, which means a back
+   * press reaches this handler even when someone is looking at Messages. Without
+   * this check, backing out of a conversation would also quietly close whatever
+   * section was left open here.
+   */
+  active: boolean
 }) {
   const styles = useStyles(makeStyles)
   const [open, setOpen] = useState<SectionDef | null>(null)
   const [triggerAction, setTriggerAction] = useState(false)
   const insets = useSafeAreaInsets()
+
+  // Back returns to the grid of modules rather than leaving the app.
+  useEffect(() => {
+    if (!active || !open) return
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setOpen(null)
+      return true
+    })
+    return () => sub.remove()
+  }, [active, open])
 
   // Home's quick actions name a destination rather than just this tab, so
   // "Payslips" opens payslips instead of dropping someone on the grid to find

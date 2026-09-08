@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -72,7 +73,19 @@ interface Outgoing {
  * conversation with one of them. Back returns to the list, which is the whole
  * navigation this needs.
  */
-export function MessagesScreen({ user, onUnread }: { user: SessionUser; onUnread: (n: number) => void }) {
+export function MessagesScreen({
+  active,
+  user,
+  onUnread,
+}: {
+  /**
+   * Whether this tab is the one on screen. The tabs all stay mounted, so a back
+   * press arrives here even when someone is elsewhere in the app.
+   */
+  active: boolean
+  user: SessionUser
+  onUnread: (n: number) => void
+}) {
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
   const [threads, setThreads] = useState<MessageThread[] | null>(null)
@@ -88,6 +101,34 @@ export function MessagesScreen({ user, onUnread }: { user: SessionUser; onUnread
   const [refreshing, setRefreshing] = useState(false)
   const listRef = useRef<FlatList<Message>>(null)
   const insets = useSafeAreaInsets()
+
+  /**
+   * Back unwinds the conversation one step at a time, innermost first.
+   *
+   * The long-press sheet is a Modal and handles its own back press, so it is
+   * not listed here — Android dismisses it before this handler ever runs.
+   */
+  useEffect(() => {
+    if (!active) return
+    if (!openWith && !picking && !editing) return
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (editing) {
+        setEditing(null)
+        setDraft("")
+        return true
+      }
+      if (openWith) {
+        setOpenWith(null)
+        return true
+      }
+      if (picking) {
+        setPicking(false)
+        return true
+      }
+      return false
+    })
+    return () => sub.remove()
+  }, [active, openWith, picking, editing])
 
   const loadThreads = useCallback(async () => {
     const rows = await messageThreads().catch(() => [])
@@ -526,16 +567,16 @@ function Bubble({
             {edited ? `edited · ${stamp}` : stamp}
           </Text>
           {tick === "pending" && (
-            <Ionicons name="time-outline" size={scale(12)} color={colors.onFill} style={styles.tick} />
+            <Ionicons name="time-outline" size={scale(12)} color={colors.onFillMuted} style={styles.tick} />
           )}
           {tick === "failed" && (
-            <Ionicons name="alert-circle" size={scale(13)} color={colors.dangerFill} style={styles.tick} />
+            <Ionicons name="alert-circle" size={scale(13)} color={colors.tickFailed} style={styles.tick} />
           )}
           {tick === "sent" && (
-            <Ionicons name="checkmark" size={scale(13)} color={colors.onFill} style={styles.tick} />
+            <Ionicons name="checkmark" size={scale(13)} color={colors.onFillMuted} style={styles.tick} />
           )}
           {tick === "read" && (
-            <Ionicons name="checkmark-done" size={scale(13)} color={colors.accent} style={styles.tick} />
+            <Ionicons name="checkmark-done" size={scale(13)} color={colors.tickRead} style={styles.tick} />
           )}
         </View>
       </View>
@@ -771,7 +812,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   bubbleText: { fontSize: scale(14), lineHeight: scale(20), color: colors.text },
   mineText: { color: colors.onFill },
   goneBubble: { backgroundColor: colors.subtle, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  goneText: { color: colors.faint, fontStyle: "italic" },
+  goneText: { color: colors.subtleText, fontStyle: "italic" },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: scale(4), marginTop: scale(3) },
   tick: { marginTop: scale(1) },
 
@@ -822,7 +863,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   sheetLabel: { fontSize: scale(15), fontWeight: "600" },
   sheetHint: { fontSize: scale(11.5), color: colors.faint, marginTop: scale(1) },
   stamp: { fontSize: scale(10), color: colors.faint, marginTop: scale(4), textAlign: "right" },
-  mineStamp: { color: "rgba(255,255,255,0.75)" },
+  mineStamp: { color: colors.onFillMuted },
 
   composer: {
     flexDirection: "row",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
@@ -80,6 +80,33 @@ function Shell() {
   const { colors, isDark } = useTheme()
   const styles = useStyles(makeStyles)
 
+  /**
+   * Android's back gesture, which until now closed the app from anywhere.
+   *
+   * With a hand-rolled tab bar there is no navigator to unwind, so nothing
+   * claimed the press and it fell through to the OS default — quitting, even
+   * three levels into Modules. The screens register their own handlers for
+   * their internal depth; this is the last one to run, and it treats Home as
+   * the bottom of the stack the way a tabbed app does.
+   *
+   * Returning false is what actually lets the app close, so Home still exits
+   * on the first press rather than trapping anyone in it.
+   */
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (profileOpen) {
+        setProfileOpen(false)
+        return true
+      }
+      if (tab !== "home") {
+        setTab("home")
+        return true
+      }
+      return false
+    })
+    return () => sub.remove()
+  }, [profileOpen, tab])
+
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null)
@@ -153,6 +180,7 @@ function Shell() {
           pointerEvents={tab === "browse" ? "auto" : "none"}
         >
           <BrowseScreen
+            active={tab === "browse"}
             user={user}
             jumpTo={browseKey}
             initialAction={browseAction}
@@ -170,7 +198,7 @@ function Shell() {
               new messages, and a badge that only appears once you have already
               looked is no use. Keyed by account so a new sign-in never inherits
               the previous person's conversations. */}
-          <MessagesScreen key={user.id} user={user} onUnread={setUnread} />
+          <MessagesScreen key={user.id} active={tab === "chat"} user={user} onUnread={setUnread} />
         </View>
         <View
           style={[styles.page, tab !== "portal" && styles.hidden]}

@@ -32,7 +32,15 @@ export const lightColors = {
   border: "#e2e8f0",
   text: "#0f172a",
   muted: "#64748b",
-  faint: "#94a3b8",
+  /**
+   * The quietest text that is still text: timestamps, placeholders, the label
+   * of an unselected tab.
+   *
+   * Darker than the slate-400 it started as, which measured 2.56:1 against a
+   * white bubble — under the 3:1 that non-body text needs, and the reason the
+   * time under each message was hard to read in daylight.
+   */
+  faint: "#7b8a9e",
 
   /**
    * Two greens, not one. `brand` is a fill with white text on it; `accent` is
@@ -51,6 +59,19 @@ export const lightColors = {
   /** A solid red — the unread badge — as opposed to red text on a surface. */
   dangerFill: "#dc2626",
   warn: "#b45309",
+
+  /**
+   * Marks drawn *on* a brand fill, where neither palette's own colours work.
+   *
+   * `accent` cannot be used here: in light mode it is the same green as the
+   * fill, so a read receipt drawn in it was invisible — the bubble's own
+   * colour on the bubble. These three are chosen against the fill instead of
+   * against the page, which is why they do not change between themes: the
+   * surface behind them is the same green in both.
+   */
+  onFillMuted: "rgba(255,255,255,0.78)",
+  tickRead: "#8ed8ff",
+  tickFailed: "#ffb4a8",
 
   /** The quiet inset panel: help text, empty states, a neutral status pill. */
   subtle: "#eef2f7",
@@ -88,6 +109,10 @@ export const darkColors: Palette = {
   danger: "#f87171",
   dangerFill: "#dc2626",
   warn: "#fbbf24",
+
+  onFillMuted: "rgba(255,255,255,0.78)",
+  tickRead: "#8ed8ff",
+  tickFailed: "#ffb4a8",
 
   subtle: "#16213a",
   subtleText: "#cbd5e1",
