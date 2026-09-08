@@ -20,6 +20,7 @@ import * as Sharing from "expo-sharing"
 // equivalent in the newer File/Directory API yet, and a share sheet is not the
 // same action.
 import * as LegacyFS from "expo-file-system/legacy"
+import * as SecureStore from "expo-secure-store"
 import {
   employeeOptions,
   generateLetter,
@@ -57,6 +58,53 @@ import { lightColors, useStyles, useTheme, type Palette } from "./theme"
 
 // ---------------------------------------------------------------- viewing
 
+/**
+ * Where this device has been told to put downloaded letters.
+ *
+ * A Storage Access Framework grant is persistable, so it is worth keeping: it
+ * is the difference between naming a folder once and naming it for every
+ * letter. Stored per-install rather than per-account, because it describes the
+ * phone rather than the person.
+ */
+const SAVE_FOLDER_KEY = "hrms.letters.folderUri"
+
+/**
+ * Writes the PDF into the folder this phone has already granted, asking for
+ * one only if there is none.
+ *
+ * Returns false when the person declines, which is a decision and not an
+ * error. A stored grant can also stop working — the folder deleted, the card
+ * removed, the permission revoked in settings — so a failed write clears it
+ * and asks again rather than failing forever on a folder that is gone.
+ */
+async function saveToChosenFolder(uri: string, name: string): Promise<boolean> {
+  const SAF = LegacyFS.StorageAccessFramework
+  const write = async (directoryUri: string) => {
+    const base64 = await LegacyFS.readAsStringAsync(uri, { encoding: "base64" })
+    const target = await SAF.createFileAsync(directoryUri, name, "application/pdf")
+    await LegacyFS.writeAsStringAsync(target, base64, { encoding: "base64" })
+  }
+
+  const remembered = await SecureStore.getItemAsync(SAVE_FOLDER_KEY).catch(() => null)
+  if (remembered) {
+    try {
+      await write(remembered)
+      return true
+    } catch {
+      await SecureStore.deleteItemAsync(SAVE_FOLDER_KEY).catch(() => undefined)
+    }
+  }
+
+  const permission = await SAF.requestDirectoryPermissionsAsync().catch(() => null)
+  if (!permission?.granted) return false
+
+  await write(permission.directoryUri)
+  // Stored only after a write has actually succeeded, so a folder that cannot
+  // be written to is never remembered as the one that can.
+  await SecureStore.setItemAsync(SAVE_FOLDER_KEY, permission.directoryUri).catch(() => undefined)
+  return true
+}
+
 export function LetterDocumentModal({
   letterId,
   preloaded,
@@ -93,57 +141,49 @@ export function LetterDocumentModal({
   const doc = useMemo(() => (payload ? buildLetter(payload) : null), [payload])
 
   /**
-   * Saves the letter as a PDF the person can keep.
+   * Saves the letter as a PDF, without a dialog wherever that is possible.
    *
-   * This replaced a Share button that sent the letter as plain text. For a
-   * letter that is the wrong artefact: what someone does with an offer or a
-   * salary certificate is file it or hand it to a bank, and neither accepts a
-   * paragraph pasted into a chat. So the letterhead is rendered to a real PDF
-   * and written where the person chooses.
+   * "Directly" costs one prompt on Android and none after it, and that is a
+   * platform limit rather than a choice. Under scoped storage an app cannot
+   * write into a folder someone can find — Downloads, say — unless they have
+   * named it once. The grant that comes back is persistable, so it is kept and
+   * reused: the first letter asks where, every letter after it just saves.
    *
-   * The two platforms differ in what "download" honestly means, so the code
-   * does too rather than pretending otherwise. Android has a document picker
-   * that writes into the folder someone names — a real save. iOS has no such
-   * thing outside the system sheet, where "Save to Files" is the equivalent
-   * action, so that is what it opens.
+   * iOS has no such restriction on the app's own documents folder, and with
+   * UIFileSharingEnabled declared that folder *is* the app's entry in Files.
+   * So there the write is direct from the very first letter.
    */
   async function download() {
     if (!doc || saving) return
     setSaving(true)
     try {
-      const name = `${doc.title.replace(/[^A-Za-z0-9]+/g, "_")}_${doc.employeeCode || doc.employeeName.replace(/\s+/g, "_")}.pdf`
+      const name = `${doc.title.replace(/[^A-Za-z0-9]+/g, "_")}_${
+        doc.employeeCode || doc.employeeName.replace(/[^A-Za-z0-9]+/g, "_")
+      }.pdf`
       const { uri } = await Print.printToFileAsync({ html: letterAsHtml(doc) })
 
-      if (Platform.OS === "android") {
-        // Asks once for a folder, then writes into it. Declining is a decision,
-        // not a failure — it falls through to the sheet below.
-        const permission = await LegacyFS.StorageAccessFramework
-          .requestDirectoryPermissionsAsync()
-          .catch(() => null)
-        if (permission?.granted) {
-          const base64 = await LegacyFS.readAsStringAsync(uri, { encoding: "base64" })
-          const destination = await LegacyFS.StorageAccessFramework.createFileAsync(
-            permission.directoryUri,
-            name,
-            "application/pdf"
-          )
-          await LegacyFS.writeAsStringAsync(destination, base64, { encoding: "base64" })
-          Alert.alert("Saved", `${name} has been saved to the folder you chose.`)
-          return
-        }
+      if (Platform.OS !== "android") {
+        // Straight into the folder the Files app shows under this app's name.
+        const destination = `${LegacyFS.documentDirectory}${name}`
+        await LegacyFS.copyAsync({ from: uri, to: destination })
+        Alert.alert("Downloaded", `${name} is in Files, under Whhoohh Path HRMS.`)
+        return
       }
 
-      // iOS, and the Android fallback when no folder was chosen. Not the same
-      // as the old Share button: this hands over a finished PDF file, and the
-      // sheet's "Save to Files" is a download by another name.
+      const saved = await saveToChosenFolder(uri, name)
+      if (saved) {
+        Alert.alert("Downloaded", `${name} has been saved.`)
+        return
+      }
+
+      // Only reached if someone declines the one-time folder prompt. Handing
+      // them the finished PDF is better than losing it over a dismissed dialog.
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
           UTI: "com.adobe.pdf",
           dialogTitle: name,
         })
-      } else {
-        Alert.alert("Saved", `The letter was written to ${uri}`)
       }
     } catch (e) {
       Alert.alert("Not saved", (e as Error).message || "The letter could not be saved.")
