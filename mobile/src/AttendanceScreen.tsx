@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Ionicons } from "@expo/vector-icons"
 import { CameraView, useCameraPermissions } from "expo-camera"
 import {
   deviceChallenge,
@@ -37,7 +38,24 @@ import { Logo } from "./Logo"
  * Every size here comes from scale() and every Text caps its font multiplier,
  * so the layout holds on a small phone and on one with system text enlarged.
  */
-export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onSignedOut: () => void }) {
+export function AttendanceScreen({
+  active,
+  user,
+  onSignedOut,
+}: {
+  /**
+   * Whether this tab is the one on screen.
+   *
+   * Every tab stays mounted so the portal keeps its state, which meant the
+   * front camera was left running for as long as the app was open — through
+   * the whole of Messages, Modules and the portal. A preview nobody is looking
+   * at costs battery and holds the camera-in-use indicator lit, which reads as
+   * the app watching someone while they work.
+   */
+  active: boolean
+  user: SessionUser
+  onSignedOut: () => void
+}) {
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
   const [record, setRecord] = useState<TodayRecord | null>(null)
@@ -54,11 +72,25 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
     // account that was here before this one.
   }, [user.employeeId])
 
+  /**
+   * Re-read whenever this tab comes to the front, not only on mount.
+   *
+   * The screen is mounted once and then sits behind the others for the rest of
+   * the session, so a punch made anywhere else — the web portal, or the phone
+   * left open since yesterday — never reached it, and someone who had already
+   * checked in was still shown a live Check in button.
+   *
+   * The biometric and enrolment checks are re-run for the same reason: the fix
+   * for "Set a screen lock on your phone first" happens in the phone's own
+   * settings, and coming back to a screen still showing the complaint is what
+   * makes it look like the fix did not work.
+   */
   useEffect(() => {
+    if (!active) return
     refresh()
     isEnrolled(user.id).then(setEnrolled)
     biometricReady().then((r) => setBlocked(r.ok ? null : (r.reason ?? null)))
-  }, [refresh, user.id])
+  }, [active, refresh, user.id])
 
   async function enrol() {
     setBusy("enrol")
@@ -133,6 +165,8 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
 
   const checkedIn = Boolean(record?.check_in)
   const checkedOut = Boolean(record?.check_out)
+  /** Both punches made: there is nothing left today for a photo to be of. */
+  const settled = checkedIn && checkedOut
 
   return (
     <ScrollView
@@ -215,10 +249,19 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
         </TouchableOpacity>
       ) : enrolled === true ? (
         <>
-          {permission?.granted ? (
-            <View style={styles.preview}>
-              <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" />
-            </View>
+          {/* Mounted only while this tab is in front and a punch is still to
+              come. Rendering it otherwise leaves the camera running behind
+              whatever else someone is doing. */}
+          {settled ? null : permission?.granted ? (
+            active ? (
+              <View style={styles.preview}>
+                <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" />
+              </View>
+            ) : (
+              // Holds the layout while the tab is in the background, so
+              // returning to it does not shift everything up and back.
+              <View style={styles.preview} />
+            )
           ) : (
             <TouchableOpacity style={styles.subtle} onPress={requestPermission}>
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.subtleText}>
@@ -227,33 +270,53 @@ export function AttendanceScreen({ user, onSignedOut }: { user: SessionUser; onS
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity
-            style={[styles.primary, (checkedIn || busy !== null) && styles.disabled]}
-            onPress={() => punch("in")}
-            disabled={checkedIn || busy !== null}
-          >
-            {busy === "in" ? (
-              <ActivityIndicator color={colors.onFill} />
-            ) : (
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
-                Check in
-              </Text>
-            )}
-          </TouchableOpacity>
+          {/* Two greyed-out buttons say "this screen is broken" rather than
+              "your day is recorded". Once both punches are in, the controls
+              are replaced by the thing someone actually came to check. */}
+          {settled ? (
+            <View style={styles.settled}>
+              <Ionicons name="checkmark-circle" size={scale(30)} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.settledTitle}>
+                  That is today recorded
+                </Text>
+                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.settledSub}>
+                  In at {formatTime(record?.check_in)}, out at {formatTime(record?.check_out)}.
+                  Nothing further to do until tomorrow.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[styles.primary, (checkedIn || busy !== null) && styles.disabled]}
+                onPress={() => punch("in")}
+                disabled={checkedIn || busy !== null}
+              >
+                {busy === "in" ? (
+                  <ActivityIndicator color={colors.onFill} />
+                ) : (
+                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
+                    {checkedIn ? `Checked in at ${formatTime(record?.check_in)}` : "Check in"}
+                  </Text>
+                )}
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.secondary, (!checkedIn || checkedOut || busy !== null) && styles.disabled]}
-            onPress={() => punch("out")}
-            disabled={!checkedIn || checkedOut || busy !== null}
-          >
-            {busy === "out" ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : (
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.secondaryText}>
-                Check out
-              </Text>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondary, (!checkedIn || busy !== null) && styles.disabled]}
+                onPress={() => punch("out")}
+                disabled={!checkedIn || busy !== null}
+              >
+                {busy === "out" ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : (
+                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.secondaryText}>
+                    Check out
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
 
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.note}>
             Your face and fingerprint stay on this phone. It signs the check-in; the
@@ -334,6 +397,18 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   subtle: { backgroundColor: colors.subtle, borderRadius: scale(10), padding: scale(12) },
   subtleText: { color: colors.subtleText, fontSize: scale(12), textAlign: "center" },
   disabled: { opacity: 0.45 },
+  settled: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(14),
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: scale(14),
+    padding: scale(16),
+  },
+  settledTitle: { fontSize: scale(15), fontWeight: "700", color: colors.text },
+  settledSub: { fontSize: scale(12.5), lineHeight: scale(18), color: colors.muted, marginTop: scale(3) },
   blocked: { color: colors.warn, fontSize: scale(13), lineHeight: scale(19) },
   note: {
     fontSize: scale(11),

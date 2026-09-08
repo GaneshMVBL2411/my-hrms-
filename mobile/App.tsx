@@ -173,7 +173,7 @@ function Shell() {
           style={[styles.page, tab !== "punch" && styles.hidden]}
           pointerEvents={tab === "punch" ? "auto" : "none"}
         >
-          <AttendanceScreen user={user} onSignedOut={() => setUser(null)} />
+          <AttendanceScreen active={tab === "punch"} user={user} onSignedOut={() => setUser(null)} />
         </View>
         <View
           style={[styles.page, tab !== "browse" && styles.hidden]}
