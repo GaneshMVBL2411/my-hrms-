@@ -64,6 +64,13 @@ export function AttendanceScreen({
   const [busy, setBusy] = useState<null | "in" | "out" | "enrol">(null)
   const [permission, requestPermission] = useCameraPermissions()
   const cameraRef = useRef<CameraView | null>(null)
+  /**
+   * True only for the second or two between the fingerprint passing and the
+   * shutter. The camera is mounted off-screen for exactly that long.
+   */
+  const [capturing, setCapturing] = useState(false)
+  /** Resolved by onCameraReady, so the shot is not taken before there is one. */
+  const cameraReady = useRef<(() => void) | null>(null)
   const insets = useSafeAreaInsets()
 
   const refresh = useCallback(async () => {
@@ -119,6 +126,41 @@ export function AttendanceScreen({
     }
   }
 
+  /**
+   * Takes the attendance photo, and only at the moment it is needed.
+   *
+   * The camera used to sit on this screen as a live preview from the moment
+   * the tab was opened. Someone arriving to press a button was met by their
+   * own face instead, which is both alarming and the wrong order: the
+   * fingerprint is what authorises a punch, and the photo is evidence
+   * attached to one that has already been authorised.
+   *
+   * So it is mounted off-screen for the second or two it takes to expose a
+   * frame, and unmounted again. Off-screen rather than at zero opacity —
+   * some devices decline to produce frames for a view they consider
+   * invisible, and a photo that silently never arrives is worse than none.
+   */
+  async function capturePhoto(): Promise<string | null> {
+    if (!permission?.granted) return null
+    setCapturing(true)
+    try {
+      // The state change above mounts the camera; this waits for it to say it
+      // can actually see. The timeout is the fallback for a device that never
+      // fires the callback — a punch must not hang on its photo.
+      await new Promise<void>((resolve) => {
+        cameraReady.current = resolve
+        setTimeout(resolve, 2500)
+      })
+      const shot = await cameraRef.current
+        ?.takePictureAsync({ base64: true, quality: 0.5, imageType: "jpg" })
+        .catch(() => null)
+      return shot?.base64 ? `data:image/jpeg;base64,${shot.base64}` : null
+    } finally {
+      cameraReady.current = null
+      setCapturing(false)
+    }
+  }
+
   async function punch(direction: "in" | "out") {
     setBusy(direction)
     try {
@@ -126,13 +168,7 @@ export function AttendanceScreen({
       const signature = await signChallenge(challenge, user.id)
 
       // Only now, with the biometric already passed.
-      let photo: string | null = null
-      if (permission?.granted && cameraRef.current) {
-        const shot = await cameraRef.current
-          .takePictureAsync({ base64: true, quality: 0.5, imageType: "jpg" })
-          .catch(() => null)
-        if (shot?.base64) photo = `data:image/jpeg;base64,${shot.base64}`
-      }
+      const photo = await capturePhoto()
 
       // The server's own answer, not the fact that a photo was sent: it drops
       // anything over 2MB and still records the punch, so trusting the local
@@ -249,19 +285,16 @@ export function AttendanceScreen({
         </TouchableOpacity>
       ) : enrolled === true ? (
         <>
-          {/* Mounted only while this tab is in front and a punch is still to
-              come. Rendering it otherwise leaves the camera running behind
-              whatever else someone is doing. */}
+          {/* No preview. A line saying what will happen is enough, and is
+              honest about the photo without pointing a live camera at
+              someone who came here to press a button. */}
           {settled ? null : permission?.granted ? (
-            active ? (
-              <View style={styles.preview}>
-                <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" />
-              </View>
-            ) : (
-              // Holds the layout while the tab is in the background, so
-              // returning to it does not shift everything up and back.
-              <View style={styles.preview} />
-            )
+            <View style={styles.cameraNote}>
+              <Ionicons name="camera-outline" size={scale(17)} color={colors.muted} />
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.cameraNoteText}>
+                A photo is taken automatically once your fingerprint is confirmed.
+              </Text>
+            </View>
           ) : (
             <TouchableOpacity style={styles.subtle} onPress={requestPermission}>
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.subtleText}>
@@ -326,6 +359,18 @@ export function AttendanceScreen({
       ) : (
         <ActivityIndicator style={{ marginTop: scale(24) }} color={colors.accent} />
       )}
+
+      {/* Off the top of the screen, and only while a shot is being taken. */}
+      {capturing && (
+        <View style={styles.captureHost} pointerEvents="none">
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="front"
+            onCameraReady={() => cameraReady.current?.()}
+          />
+        </View>
+      )}
     </ScrollView>
   )
 }
@@ -364,14 +409,29 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   timeLabel: { fontSize: scale(11), color: colors.faint },
   time: { fontSize: scale(20), fontWeight: "600", color: colors.text, marginTop: scale(2) },
   // Aspect ratio rather than a fixed height: a square preview on every screen.
-  preview: {
-    width: "100%",
-    aspectRatio: 1,
-    maxHeight: scale(260),
-    borderRadius: scale(12),
-    overflow: "hidden",
-    backgroundColor: colors.border,
+  /**
+   * Where the shot is actually taken from: a real-sized camera, positioned
+   * off the top of the screen. Real-sized because some devices will not
+   * produce frames for a view of no size, and off-screen rather than
+   * transparent for the same reason.
+   */
+  captureHost: {
+    position: "absolute",
+    top: -scale(600),
+    left: 0,
+    width: scale(200),
+    height: scale(200),
   },
+  cameraNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(9),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(11),
+    borderRadius: scale(10),
+    backgroundColor: colors.subtle,
+  },
+  cameraNoteText: { flex: 1, fontSize: scale(12), lineHeight: scale(17), color: colors.subtleText },
   primary: {
     backgroundColor: colors.brand,
     borderRadius: scale(12),
