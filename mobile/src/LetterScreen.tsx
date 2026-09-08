@@ -77,10 +77,9 @@ const SAVE_FOLDER_KEY = "hrms.letters.folderUri"
  * removed, the permission revoked in settings — so a failed write clears it
  * and asks again rather than failing forever on a folder that is gone.
  */
-async function saveToChosenFolder(uri: string, name: string): Promise<boolean> {
+async function saveToChosenFolder(base64: string, name: string): Promise<boolean> {
   const SAF = LegacyFS.StorageAccessFramework
   const write = async (directoryUri: string) => {
-    const base64 = await LegacyFS.readAsStringAsync(uri, { encoding: "base64" })
     const target = await SAF.createFileAsync(directoryUri, name, "application/pdf")
     await LegacyFS.writeAsStringAsync(target, base64, { encoding: "base64" })
   }
@@ -160,17 +159,25 @@ export function LetterDocumentModal({
       const name = `${doc.title.replace(/[^A-Za-z0-9]+/g, "_")}_${
         doc.employeeCode || doc.employeeName.replace(/[^A-Za-z0-9]+/g, "_")
       }.pdf`
-      const { uri } = await Print.printToFileAsync({ html: letterAsHtml(doc) })
+      // The bytes come back with the file rather than being read from it
+      // afterwards. printToFileAsync writes into the print module's own cache
+      // directory, which is outside the sandbox the file-system module will
+      // read from — reading it back failed with "isn't readable", and the fix
+      // is not to widen the sandbox but to stop needing the read.
+      const printed = await Print.printToFileAsync({ html: letterAsHtml(doc), base64: true })
+      const base64 = printed.base64
+      if (!base64) throw new Error("The PDF was created but came back empty.")
 
       if (Platform.OS !== "android") {
         // Straight into the folder the Files app shows under this app's name.
-        const destination = `${LegacyFS.documentDirectory}${name}`
-        await LegacyFS.copyAsync({ from: uri, to: destination })
+        await LegacyFS.writeAsStringAsync(`${LegacyFS.documentDirectory}${name}`, base64, {
+          encoding: "base64",
+        })
         Alert.alert("Downloaded", `${name} is in Files, under Whhoohh Path HRMS.`)
         return
       }
 
-      const saved = await saveToChosenFolder(uri, name)
+      const saved = await saveToChosenFolder(base64, name)
       if (saved) {
         Alert.alert("Downloaded", `${name} has been saved.`)
         return
@@ -179,7 +186,7 @@ export function LetterDocumentModal({
       // Only reached if someone declines the one-time folder prompt. Handing
       // them the finished PDF is better than losing it over a dismissed dialog.
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
+        await Sharing.shareAsync(printed.uri, {
           mimeType: "application/pdf",
           UTI: "com.adobe.pdf",
           dialogTitle: name,
