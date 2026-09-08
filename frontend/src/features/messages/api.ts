@@ -3,7 +3,7 @@ import { unwrap, unwrapVoid } from "@/lib/errors"
 import type { Message, MessageThread } from "@/features/messages/types"
 
 const COLUMNS =
-  "id, sender_id, sender_name, recipient_id, recipient_name, body, read_at, created_at"
+  "id, sender_id, sender_name, recipient_id, recipient_name, body, read_at, created_at, edited_at, deleted_at"
 
 export interface Contact {
   userId: number

@@ -261,14 +261,25 @@ export function MessagesPage() {
                         )}
                       >
                         {/* whitespace-pre-wrap: paragraphs someone typed on
-                            purpose should survive being sent. */}
-                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                            purpose should survive being sent. A withdrawn
+                            message keeps its place and loses its text — the
+                            view returns null for the body, so this is the
+                            only thing left to say about it. */}
+                        <p
+                          className={cn(
+                            "whitespace-pre-wrap break-words",
+                            m.deletedAt && "italic opacity-70"
+                          )}
+                        >
+                          {m.deletedAt ? "This message was deleted" : m.body}
+                        </p>
                         <p
                           className={cn(
                             "mt-1 text-right text-[11px]",
                             mine ? "text-primary-foreground/70" : "text-muted-foreground"
                           )}
                         >
+                          {m.editedAt && !m.deletedAt && "edited · "}
                           {whenLabel(m.createdAt)}
                           {mine && m.readAt && " · read"}
                         </p>
