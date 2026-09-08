@@ -108,6 +108,16 @@ export function MessagesScreen({
    * The long-press sheet is a Modal and handles its own back press, so it is
    * not listed here — Android dismisses it before this handler ever runs.
    */
+  // Straight away on return, rather than at the next tick of the poll above.
+  useEffect(() => {
+    if (!active) return
+    loadThreads()
+    if (openWith) loadMessages(openWith.id)
+    // Only when the tab changes hands: listing the loaders here would refetch
+    // the conversation on every render that recreates them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+
   useEffect(() => {
     if (!active) return
     if (!openWith && !picking && !editing) return
@@ -146,11 +156,15 @@ export function MessagesScreen({
     // Polling rather than a socket: a handful of rows and a dozen people is not
     // worth a connection to keep alive.
     const timer = setInterval(() => {
+      // The thread list is polled whatever tab is in front, because the unread
+      // badge on the tab bar is the whole point of it. The open conversation
+      // is not: nobody is reading it from another tab, and a request every
+      // fifteen seconds for a screen behind the portal is just noise.
       loadThreads()
-      if (openWith) loadMessages(openWith.id)
+      if (openWith && active) loadMessages(openWith.id)
     }, 15000)
     return () => clearInterval(timer)
-  }, [loadThreads, loadMessages, openWith])
+  }, [loadThreads, loadMessages, openWith, active])
 
   // Opening a thread is what marks it read — the same thing that happens when
   // someone actually reads it. A failure here is silently ignored: a badge that

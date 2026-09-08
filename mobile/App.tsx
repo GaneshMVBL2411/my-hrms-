@@ -154,6 +154,7 @@ function Shell() {
               that owns it opens it. "Payslips" lands on payslips, not on the
               grid with payslips somewhere in it. */}
           <HomeScreen
+            active={tab === "home"}
             user={user}
             onOpenProfile={() => setProfileOpen(true)}
             onGo={(t) => {

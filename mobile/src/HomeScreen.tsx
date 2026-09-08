@@ -19,10 +19,13 @@ import { useStyles, useTheme, type Palette } from "./theme"
  * kilobytes to render a single digit.
  */
 export function HomeScreen({
+  active,
   user,
   onGo,
   onOpenProfile,
 }: {
+  /** Whether this tab is the one on screen. Every tab stays mounted. */
+  active: boolean
   user: SessionUser
   onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies") => void
   onOpenProfile: () => void
@@ -77,9 +80,19 @@ export function HomeScreen({
     // different route.
   }, [user.employeeId])
 
+  /**
+   * Reloaded whenever Home comes back to the front.
+   *
+   * Home is a summary of things the other tabs change. Loading it once at
+   * startup meant checking in on the next tab and returning here to be told
+   * you were not clocked in — the figure was not wrong when it was fetched,
+   * it was just never fetched again. Pull-to-refresh existed, but needing it
+   * to correct something you just did is not a fix.
+   */
   useEffect(() => {
+    if (!active) return
     load()
-  }, [load])
+  }, [active, load])
 
   const checkedIn = Boolean(today?.check_in)
   const checkedOut = Boolean(today?.check_out)
