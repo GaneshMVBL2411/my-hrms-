@@ -514,30 +514,97 @@ export function buildLetter(letter: LetterPayload): LetterDoc {
  * is getting the words to someone now — into a chat, into a mail draft — and
  * that is what this is for.
  */
-export function letterAsText(doc: LetterDoc): string {
-  const lines: string[] = [doc.companyName]
-  if (doc.companyAddress) lines.push(doc.companyAddress)
-  lines.push("", doc.refLine, doc.dateLine, "", doc.title, "")
-
-  if (doc.recipient) {
-    lines.push(doc.recipient.name)
-    if (doc.recipient.address) lines.push(doc.recipient.address)
-    lines.push("")
-  }
-  if (doc.subject) lines.push("Subject: " + doc.subject, "")
-
-  lines.push(doc.salutation, "")
-  for (const paragraph of doc.body) lines.push(paragraph, "")
-
-  for (const d of doc.details) lines.push(d.label + ": " + d.value)
-  lines.push("")
-
-  if (doc.closing) lines.push(doc.closing, "")
-  if (doc.note) lines.push(doc.note, "")
-
-  lines.push(doc.signOff, "", "Authorised Signatory", "Designated Partner / Head — Human Resources")
-  if (doc.countersignedBy) {
-    lines.push("", "Accepted and agreed", "", doc.countersignedBy, "Signature / Date")
-  }
-  return lines.join("\n")
+/**
+ * The letter as a printable HTML page, for the PDF a download produces.
+ *
+ * This replaced a plain-text renderer that existed to be pasted into a chat or
+ * a mail draft. For a letter that was the wrong artefact: what someone does
+ * with an offer or a salary certificate is file it or hand it to a bank, and
+ * there the letterhead, the rule under it and the signature block are the
+ * parts that make it a letter rather than a note.
+ *
+ * Styled for A4 with real margins, and in points rather than pixels: the print
+ * engine works in physical units and a page laid out in CSS pixels comes out
+ * a different size on a different device.
+ */
+/**
+ * Escapes text before it is put into the letter's HTML.
+ *
+ * Every field in the letter is authored by someone — an employee name, an
+ * address, a paragraph HR typed — so none of it may be trusted to be
+ * markup-free. An apostrophe in a name is the common case; a stray angle
+ * bracket silently eating the rest of the letter is the one worth preventing.
+ */
+function esc(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
 }
+
+export function letterAsHtml(doc: LetterDoc): string {
+  const paragraphs = doc.body.map((p) => `<p class="para">${esc(p)}</p>`).join("")
+  const details = doc.details.length
+    ? `<table class="details">${doc.details
+        .map((d) => `<tr><td class="k">${esc(d.label)}</td><td class="v">${esc(d.value)}</td></tr>`)
+        .join("")}</table>`
+    : ""
+  const recipient = doc.recipient
+    ? `<p class="to"><strong>${esc(doc.recipient.name)}</strong>${
+        doc.recipient.address ? `<br/><span class="addr">${esc(doc.recipient.address)}</span>` : ""
+      }</p>`
+    : ""
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/><title>${esc(doc.title)}</title><style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: Georgia, "Times New Roman", serif; color: #14201a; font-size: 11pt; line-height: 1.55; }
+  .company { text-align: center; font-size: 14pt; font-weight: 700; color: #0f4c34; letter-spacing: .3pt; }
+  .companyAddress { text-align: center; font-size: 8.5pt; color: #5a6b62; margin-top: 2pt; }
+  .rule { height: 1.6pt; background: #0f4c34; margin: 8pt 0 12pt; }
+  .refRow { display: flex; justify-content: space-between; font-size: 8.5pt; color: #5a6b62; }
+  h1 { font-size: 12pt; text-align: center; letter-spacing: .6pt; color: #0f4c34; margin: 18pt 0 14pt; text-transform: uppercase; }
+  .to { margin: 0 0 10pt; font-size: 10.5pt; }
+  .addr { color: #5a6b62; font-size: 10pt; }
+  .subject { font-weight: 700; margin: 12pt 0; }
+  .para { margin: 0 0 9pt; text-align: justify; }
+  .note { font-style: italic; color: #444f49; margin: 10pt 0; }
+  .details { width: 100%; border-collapse: collapse; margin: 12pt 0; border: .5pt solid #d6e0da; }
+  .details td { padding: 5pt 8pt; border-bottom: .5pt solid #eaf0ec; font-size: 10pt; }
+  .details .k { color: #5a6b62; width: 45%; }
+  .details .v { font-weight: 700; text-align: right; }
+  /* Kept off a page break: a signature stranded alone on a second page is the
+     one layout fault that makes a letter look unofficial. */
+  .sign { margin-top: 26pt; page-break-inside: avoid; }
+  .signName { margin-top: 34pt; font-weight: 700; }
+  .signRole { font-size: 9pt; color: #5a6b62; }
+  .counter { margin-top: 26pt; page-break-inside: avoid; }
+</style></head><body>
+  <div class="company">${esc(doc.companyName)}</div>
+  ${doc.companyAddress ? `<div class="companyAddress">${esc(doc.companyAddress)}</div>` : ""}
+  <div class="rule"></div>
+  <div class="refRow"><span>${esc(doc.refLine)}</span><span>${esc(doc.dateLine)}</span></div>
+  <h1>${esc(doc.title)}</h1>
+  ${recipient}
+  ${doc.subject ? `<p class="subject">Subject: ${esc(doc.subject)}</p>` : ""}
+  <p class="para">${esc(doc.salutation)}</p>
+  ${paragraphs}
+  ${details}
+  ${doc.closing ? `<p class="para">${esc(doc.closing)}</p>` : ""}
+  ${doc.note ? `<p class="note">${esc(doc.note)}</p>` : ""}
+  <div class="sign">
+    <div>${esc(doc.signOff)}</div>
+    <div class="signName">Authorised Signatory</div>
+    <div class="signRole">Designated Partner / Head — Human Resources</div>
+  </div>
+  ${
+    doc.countersignedBy
+      ? `<div class="counter"><div>Accepted and agreed</div>
+         <div class="signName">${esc(doc.countersignedBy)}</div>
+         <div class="signRole">Signature / Date</div></div>`
+      : ""
+  }
+</body></html>`
+}
+

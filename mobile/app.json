@@ -56,7 +56,8 @@
             "backgroundColor": "#0b1220"
           }
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",

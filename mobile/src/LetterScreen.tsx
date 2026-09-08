@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Modal,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +13,13 @@ import {
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
+import * as Print from "expo-print"
+import * as Sharing from "expo-sharing"
+// The legacy entry point deliberately: Android's Storage Access Framework —
+// the thing that lets someone name a folder and write into it — has no
+// equivalent in the newer File/Directory API yet, and a share sheet is not the
+// same action.
+import * as LegacyFS from "expo-file-system/legacy"
 import {
   employeeOptions,
   generateLetter,
@@ -23,7 +30,7 @@ import {
 } from "./api"
 import {
   buildLetter,
-  letterAsText,
+  letterAsHtml,
   DEFAULT_NOTICE_PERIOD,
   DEFAULT_PROBATION,
   LETTER_CHOICES,
@@ -65,6 +72,7 @@ export function LetterDocumentModal({
   const styles = useStyles(makeStyles)
   const [payload, setPayload] = useState<LetterPayload | null>(preloaded ?? null)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const insets = useSafeAreaInsets()
 
   useEffect(() => {
@@ -84,16 +92,63 @@ export function LetterDocumentModal({
 
   const doc = useMemo(() => (payload ? buildLetter(payload) : null), [payload])
 
-  async function share() {
-    if (!doc) return
+  /**
+   * Saves the letter as a PDF the person can keep.
+   *
+   * This replaced a Share button that sent the letter as plain text. For a
+   * letter that is the wrong artefact: what someone does with an offer or a
+   * salary certificate is file it or hand it to a bank, and neither accepts a
+   * paragraph pasted into a chat. So the letterhead is rendered to a real PDF
+   * and written where the person chooses.
+   *
+   * The two platforms differ in what "download" honestly means, so the code
+   * does too rather than pretending otherwise. Android has a document picker
+   * that writes into the folder someone names — a real save. iOS has no such
+   * thing outside the system sheet, where "Save to Files" is the equivalent
+   * action, so that is what it opens.
+   */
+  async function download() {
+    if (!doc || saving) return
+    setSaving(true)
     try {
-      await Share.share({
-        title: LETTER_TITLES[payload!.letter_type] + " — " + doc.employeeName,
-        message: letterAsText(doc),
-      })
-    } catch {
-      // Dismissing the share sheet rejects on some Android builds. Nothing has
-      // gone wrong and nothing needs saying.
+      const name = `${doc.title.replace(/[^A-Za-z0-9]+/g, "_")}_${doc.employeeCode || doc.employeeName.replace(/\s+/g, "_")}.pdf`
+      const { uri } = await Print.printToFileAsync({ html: letterAsHtml(doc) })
+
+      if (Platform.OS === "android") {
+        // Asks once for a folder, then writes into it. Declining is a decision,
+        // not a failure — it falls through to the sheet below.
+        const permission = await LegacyFS.StorageAccessFramework
+          .requestDirectoryPermissionsAsync()
+          .catch(() => null)
+        if (permission?.granted) {
+          const base64 = await LegacyFS.readAsStringAsync(uri, { encoding: "base64" })
+          const destination = await LegacyFS.StorageAccessFramework.createFileAsync(
+            permission.directoryUri,
+            name,
+            "application/pdf"
+          )
+          await LegacyFS.writeAsStringAsync(destination, base64, { encoding: "base64" })
+          Alert.alert("Saved", `${name} has been saved to the folder you chose.`)
+          return
+        }
+      }
+
+      // iOS, and the Android fallback when no folder was chosen. Not the same
+      // as the old Share button: this hands over a finished PDF file, and the
+      // sheet's "Save to Files" is a download by another name.
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          UTI: "com.adobe.pdf",
+          dialogTitle: name,
+        })
+      } else {
+        Alert.alert("Saved", `The letter was written to ${uri}`)
+      }
+    } catch (e) {
+      Alert.alert("Not saved", (e as Error).message || "The letter could not be saved.")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -107,10 +162,18 @@ export function LetterDocumentModal({
             </Text>
           </TouchableOpacity>
           {doc && (
-            <TouchableOpacity style={styles.shareBtn} onPress={share}>
-              <Ionicons name="share-outline" size={scale(15)} color={colors.onFill} />
+            <TouchableOpacity
+              style={[styles.shareBtn, saving && { opacity: 0.6 }]}
+              onPress={download}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color={colors.onFill} size="small" />
+              ) : (
+                <Ionicons name="download-outline" size={scale(15)} color={colors.onFill} />
+              )}
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.shareText}>
-                Share
+                {saving ? "Saving…" : "Download"}
               </Text>
             </TouchableOpacity>
           )}
