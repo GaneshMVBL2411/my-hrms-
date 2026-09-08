@@ -35,10 +35,32 @@ import {
 const app = express()
 
 // General body size limit (100kb) prevents unauthenticated DoS via huge JSON payloads
-app.use(express.json({ limit: "100kb" }))
+const generalBodyParser = express.json({ limit: "100kb" })
 
 // Body parser specifically for base64 file uploads
 const fileUploadBodyParser = express.json({ limit: "10mb" })
+
+/**
+ * The routes that carry a base64 image, and so may not be parsed at 100kb.
+ *
+ * Mounting the general parser with `app.use` is what made a route-level
+ * `fileUploadBodyParser` useless: the global one runs first, reads the body,
+ * and throws on anything over its own limit — so the wider parser downstream
+ * never saw the request. A punch with a selfie attached (a few hundred KB
+ * before base64 adds its third) failed every time, and /files had the same
+ * fault waiting for a large enough upload.
+ *
+ * Skipping these paths rather than raising the global limit keeps the DoS
+ * ceiling low everywhere else, which is what the 100kb was for.
+ */
+const LARGE_BODY_PATHS = ["/files", "/device/punch"]
+
+app.use((req, res, next) => {
+  if (LARGE_BODY_PATHS.some((path) => req.path === path || req.path.startsWith(`${path}/`))) {
+    return next()
+  }
+  return generalBodyParser(req, res, next)
+})
 
 // Security headers (M7)
 app.use((_req, res, next) => {
@@ -685,7 +707,17 @@ app.post("/device/challenge", requireAuth, authLimiter, (req, res) => {
   res.json({ challenge: issueChallenge(req.user!.userId) })
 })
 
-app.post("/device/punch/:direction", requireAuth, authLimiter, async (req, res) => {
+/**
+ * The selfie rides along in this body, so this route needs the large parser.
+ *
+ * On the global 100kb limit a punch with a photo attached never reached the
+ * handler: a front-camera JPEG is a few hundred KB before base64 adds its
+ * third, so express rejected the body and the punch failed with a generic
+ * error that said nothing about a photo. `recordPunch` already caps the
+ * decoded image at 2MB, which is the limit that actually governs what is
+ * stored; this one only has to be wide enough to let it through.
+ */
+app.post("/device/punch/:direction", requireAuth, authLimiter, fileUploadBodyParser, async (req, res) => {
   const direction = req.params.direction
   if (direction !== "in" && direction !== "out") {
     return res.status(404).json({ error: "Unknown punch direction" })
@@ -830,7 +862,7 @@ app.use(emailRouter)
 // Four arguments, including `next`: that signature is how Express recognises an
 // error handler, and omitting it makes this silently never run.
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const err = error as { code?: string; message?: string }
+  const err = error as { code?: string; message?: string; type?: string }
 
   // Postgres error classes that describe a bad request rather than a fault.
   const byCode: Record<string, number> = {
@@ -843,6 +875,14 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
     "42703": 400, // undefined_column
     "42P01": 400, // undefined_table
     "22P02": 400, // invalid_text_representation
+  }
+
+  // body-parser reports an oversized body with a string code and its own
+  // status. Left to the map below it fell through to 500 — "Internal server
+  // error" for something the caller can actually fix by sending less.
+  if (err.code === "LIMIT_FILE_SIZE" || err.type === "entity.too.large") {
+    console.error(`[413] entity.too.large ${err.message ?? error}`)
+    return res.status(413).json({ error: "That upload is too large. Try again with a smaller photo." })
   }
 
   // Ternary rather than `&&`: an empty-string code would make the whole
