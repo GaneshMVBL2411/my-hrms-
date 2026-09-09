@@ -8,6 +8,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -449,7 +450,14 @@ function NotePrompt({
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        {/* Scrollable and height-capped: the window shrinks when the keyboard
+            opens, and a sheet taller than what is left had its lower fields —
+            the ones being typed into — clipped with no way to reach them. */}
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheet}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetTitle}>
             {prompt.title}
           </Text>
@@ -491,7 +499,7 @@ function NotePrompt({
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   )
@@ -541,7 +549,14 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        {/* Scrollable and height-capped: the window shrinks when the keyboard
+            opens, and a sheet taller than what is left had its lower fields —
+            the ones being typed into — clipped with no way to reach them. */}
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheet}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetTitle}>
             Apply for leave
           </Text>
@@ -597,7 +612,7 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   )
@@ -729,6 +744,8 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     justifyContent: "center",
     padding: scale(18),
   },
+  // The scroller carries the bounds; the sheet itself carries the look.
+  sheetScroll: { width: "100%", maxHeight: "100%" },
   sheet: {
     width: "100%",
     backgroundColor: colors.card,

@@ -31,6 +31,23 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
   // password field can only be reached by tapping it — which is impossible when
   // the keyboard is covering it. Both values then end up in the email box.
   const passwordRef = useRef<TextInput>(null)
+  const scrollRef = useRef<ScrollView>(null)
+
+  /**
+   * Brings the form back into view when the keyboard takes half the screen.
+   *
+   * The content is centred, so a shrinking window pushes the lower half of it
+   * off the bottom — the password field ended up behind the keyboard with no
+   * way to see what was being typed. React Native scrolls to a focused input
+   * on iOS and does not on Android, so this is the Android half.
+   *
+   * Deferred by a frame: the scroll has to happen after the window has
+   * actually resized, and asking before that scrolls against the old height
+   * and lands short.
+   */
+  const revealForm = () => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)
+  }
   const insets = useSafeAreaInsets()
 
   async function submit() {
@@ -49,14 +66,17 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      // Android is handled natively by softwareKeyboardLayoutMode: "pan" in
-      // app.json, which slides the window so the focused field stays visible.
-      // Adding a behavior here as well makes both adjust and the form jumps.
+      // Android is handled natively by softwareKeyboardLayoutMode: "resize" in
+      // app.json, which shrinks the window rather than sliding it. Adding a
+      // behavior here as well makes both adjust and the form jumps; what the
+      // resize does not do by itself is scroll to the focused field, which is
+      // what revealForm below is for.
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       {/* A ScrollView so the form is still reachable on a short screen with the
           keyboard up — on a small phone the button would otherwise be under it. */}
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + scale(40), paddingBottom: insets.bottom + scale(24) },
@@ -83,6 +103,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
           textContentType="username"
           autoComplete="email"
           returnKeyType="next"
+          onFocus={revealForm}
           // blurOnSubmit={false} stops the keyboard closing and reopening as
           // focus moves, which on Android drops the first keystroke.
           blurOnSubmit={false}
@@ -116,6 +137,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
             // textContentType is iOS-only; this is the Android half of the pair.
             autoComplete="password"
             returnKeyType="go"
+            onFocus={revealForm}
             value={password}
             onChangeText={setPassword}
             onSubmitEditing={submit}
