@@ -46,8 +46,8 @@ function PhotoCell({
   photoId: string | null | undefined
   name: string
   time: string | null
-  lat?: number | null
-  lng?: number | null
+  lat?: number | string | null
+  lng?: number | string | null
   onOpen: (info: { url: string; title: string; subtitle?: string; location?: string }) => void
 }) {
   const url = getPhotoUrl(photoId)
@@ -60,6 +60,10 @@ function PhotoCell({
     )
   }
 
+  const numLat = lat != null && lat !== "" ? Number(lat) : NaN
+  const numLng = lng != null && lng !== "" ? Number(lng) : NaN
+  const hasCoords = !isNaN(numLat) && !isNaN(numLng)
+
   return (
     <button
       type="button"
@@ -68,7 +72,7 @@ function PhotoCell({
           url,
           title: `${name} — Biometric Check In`,
           subtitle: time ? `Time: ${time}` : undefined,
-          location: lat && lng ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : undefined,
+          location: hasCoords ? `${numLat.toFixed(5)}, ${numLng.toFixed(5)}` : undefined,
         })
       }
       className="group relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-muted shadow-xs transition-transform hover:scale-110 hover:border-primary focus:outline-hidden focus:ring-2 focus:ring-ring"
@@ -95,15 +99,19 @@ function LocationCell({
   lng,
   accuracy,
 }: {
-  lat?: number | null
-  lng?: number | null
-  accuracy?: number | null
+  lat?: number | string | null
+  lng?: number | string | null
+  accuracy?: number | string | null
 }) {
-  if (lat == null || lng == null) {
+  const numLat = lat != null && lat !== "" ? Number(lat) : NaN
+  const numLng = lng != null && lng !== "" ? Number(lng) : NaN
+  const numAcc = accuracy != null && accuracy !== "" ? Number(accuracy) : null
+
+  if (isNaN(numLat) || isNaN(numLng)) {
     return <span className="text-muted-foreground">—</span>
   }
 
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${numLat},${numLng}`
 
   return (
     <a
@@ -111,12 +119,14 @@ function LocationCell({
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-      title={`Open in Google Maps (${lat}, ${lng})`}
+      title={`Open in Google Maps (${numLat}, ${numLng})`}
     >
       <MapPin className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-      <span className="font-mono text-[11px]">{lat.toFixed(4)}, {lng.toFixed(4)}</span>
-      {accuracy != null && (
-        <span className="text-[10px] text-muted-foreground">(±{Math.round(accuracy)}m)</span>
+      <span className="font-mono text-[11px]">
+        {numLat.toFixed(4)}, {numLng.toFixed(4)}
+      </span>
+      {numAcc != null && !isNaN(numAcc) && (
+        <span className="text-[10px] text-muted-foreground">(±{Math.round(numAcc)}m)</span>
       )}
       <ExternalLink className="size-2.5 opacity-60 ml-0.5" />
     </a>

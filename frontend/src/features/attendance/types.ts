@@ -13,12 +13,12 @@ export interface AttendanceRecord {
   isLate: boolean
   checkInPhotoId?: string | null
   checkOutPhotoId?: string | null
-  checkInLatitude?: number | null
-  checkInLongitude?: number | null
-  checkInAccuracyM?: number | null
-  checkOutLatitude?: number | null
-  checkOutLongitude?: number | null
-  checkOutAccuracyM?: number | null
+  checkInLatitude?: number | string | null
+  checkInLongitude?: number | string | null
+  checkInAccuracyM?: number | string | null
+  checkOutLatitude?: number | string | null
+  checkOutLongitude?: number | string | null
+  checkOutAccuracyM?: number | string | null
 }
 
 export interface AttendanceSummary {
