@@ -44,6 +44,7 @@ import { listTasks } from "@/features/tasks/api"
 import { listRequests, approveLeave, rejectLeave } from "@/features/leaves/api"
 import { listAnnouncements } from "@/features/announcements/api"
 import { EmployeeDashboard } from "@/features/dashboard/EmployeeDashboard"
+import { ScheduleWidget } from "@/features/dashboard/widgets/ScheduleWidget"
 import { errorMessage } from "@/lib/errors"
 
 export function DashboardPage() {
@@ -535,7 +536,10 @@ function OrganizationDashboard() {
         </Card>
       </div>
 
-      {/* 5. Recent Joinees & Company Noticeboard */}
+      {/* 5. My Schedule & Interactive Calendar */}
+      <ScheduleWidget />
+
+      {/* 6. Recent Joinees & Company Noticeboard */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Recent Joinees */}
         <Card className="rounded-2xl border border-border shadow-xs interactive-card">

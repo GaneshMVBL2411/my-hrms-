@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons"
 import { select, today as fetchToday, type SessionUser, type TodayRecord } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
+import { ScheduleCalendar } from "./ScheduleCalendar"
 
 /**
  * The landing screen: what today looks like, and the four things people came to
@@ -27,7 +28,7 @@ export function HomeScreen({
   /** Whether this tab is the one on screen. Every tab stays mounted. */
   active: boolean
   user: SessionUser
-  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies") => void
+  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies" | "calendar") => void
   onOpenProfile: () => void
 }) {
   const { colors } = useTheme()
@@ -217,9 +218,15 @@ export function HomeScreen({
       <View style={styles.actions}>
         <Action icon="time-outline" tint="#0ea5e9" label="Attendance" onPress={() => onGo("attendance")} />
         <Action icon="airplane-outline" tint="#f59e0b" label="Leave" onPress={() => onGo("leaves")} />
+        <Action icon="calendar-outline" tint="#6366f1" label="Calendar" onPress={() => onGo("calendar")} />
         <Action icon="wallet-outline" tint="#16a34a" label="Payslips" onPress={() => onGo("payslips")} />
         <Action icon="grid-outline" tint="#8b5cf6" label="More" onPress={() => onGo("browse")} />
       </View>
+
+      <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sectionLabel}>
+        My Schedule
+      </Text>
+      <ScheduleCalendar user={user} />
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: scale(20) }} color={colors.accent} />

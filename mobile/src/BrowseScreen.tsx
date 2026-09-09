@@ -25,6 +25,7 @@ import { SECTIONS, type RowAction, type RowView, type SectionDef, type Tone } fr
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
 import { play, transformFor, MOTION_MS } from "./motion"
+import { ScheduleCalendar } from "./ScheduleCalendar"
 
 /**
  * The HRMS, natively: a menu of sections and a list for whichever is open.
@@ -91,6 +92,29 @@ export function BrowseScreen({
   }, [jumpTo, initialAction, onJumped])
 
   if (open) {
+    if (open.key === "calendar") {
+      return (
+        <View style={[styles.root, { paddingTop: insets.top + scale(12) }]}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setOpen(null)} hitSlop={10}>
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.back}>
+                ‹ Back
+              </Text>
+            </TouchableOpacity>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.heading}>
+              {open.title}
+            </Text>
+          </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: scale(36), paddingTop: scale(8) }}
+          >
+            <ScheduleCalendar user={user} />
+          </ScrollView>
+        </View>
+      )
+    }
+
     return (
       <SectionList
         section={open}
