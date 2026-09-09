@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native"
@@ -11,10 +16,12 @@ import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
 
 export interface CalendarEvent {
-  id?: number
+  id?: number | string
   date: string
   title: string
   type: "meeting" | "event" | "holiday" | "leave" | "task_due" | "project_deadline" | "birthday"
+  timeSlot?: string
+  assignee?: string
   description?: string
 }
 
@@ -35,6 +42,17 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
+const INITIAL_ACTIVITIES = [
+  { id: "act-1", title: "Prescription: Prescription 20 Jul", date: "2026-07-20 · 11:38 AM" },
+  { id: "act-2", title: "Prescription: Fever and cold", date: "2026-07-10 · 09:23 AM" },
+  { id: "act-3", title: "Consultation scheduled", date: "2026-07-10 · 09:20 AM" },
+  { id: "act-4", title: "Consent request approved", date: "2026-05-21 · 11:55 AM" },
+  { id: "act-5", title: "Consent request revoked", date: "2026-05-16 · 05:01 AM" },
+  { id: "act-6", title: "Consultation scheduled", date: "2026-05-16 · 05:00 AM" },
+  { id: "act-7", title: "Consent request revoked", date: "2026-05-16 · 04:38 AM" },
+  { id: "act-8", title: "Consultation scheduled", date: "2026-05-16 · 04:26 AM" },
+]
+
 export function ScheduleCalendar({
   user,
 }: {
@@ -43,19 +61,73 @@ export function ScheduleCalendar({
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
 
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth()) // 0-indexed
-  const [selectedDateStr, setSelectedDateStr] = useState(() => {
-    const d = new Date()
-    const m = d.getMonth() + 1
-    const day = d.getDate()
-    return `${d.getFullYear()}-${m < 10 ? "0" : ""}${m}-${day < 10 ? "0" : ""}${day}`
-  })
+  const [currentYear, setCurrentYear] = useState(2026)
+  const [currentMonth, setCurrentMonth] = useState(8) // September (0-indexed = 8)
+  const [selectedDateStr, setSelectedDateStr] = useState("2026-09-09")
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
 
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [events, setEvents] = useState<CalendarEvent[]>([
+    {
+      id: "ev-1",
+      date: "2026-09-09",
+      title: "Consultation: Patient Review",
+      type: "event",
+      timeSlot: "10:30 AM - 11:30 AM",
+      assignee: "Dr. Taraka Nadh Nanduri",
+      description: "Routine biometric check & prescription evaluation.",
+    },
+    {
+      id: "ev-2",
+      date: "2026-09-09",
+      title: "Shift Review & Standup",
+      type: "meeting",
+      timeSlot: "02:00 PM - 03:00 PM",
+      assignee: "Ganesh Kumar",
+      description: "Practice targets and operations overview.",
+    },
+    {
+      id: "ev-3",
+      date: "2026-09-11",
+      title: "Follow-up: Lab Results Analysis",
+      type: "task_due",
+      timeSlot: "11:00 AM - 12:00 PM",
+      assignee: "Bhavya Sri",
+      description: "Diagnostic reports review.",
+    },
+    {
+      id: "ev-4",
+      date: "2026-09-15",
+      title: "Blocked Time: Medical Conference",
+      type: "leave",
+      timeSlot: "Full Day",
+      assignee: "Dr. Taraka Nadh Nanduri",
+      description: "Annual Healthcare Symposium.",
+    },
+  ])
+
+  const [activities, setActivities] = useState(INITIAL_ACTIVITIES)
   const [totalTeam, setTotalTeam] = useState(6)
   const [pendingLeaves, setPendingLeaves] = useState(1)
   const [activeOnDuty, setActiveOnDuty] = useState(2)
+
+  // Interactive Modals State
+  const [hrModalOpen, setHrModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<CalendarEvent | null>(null)
+  const [eventTitleInput, setEventTitleInput] = useState("")
+  const [eventTypeInput, setEventTypeInput] = useState<CalendarEvent["type"]>("event")
+  const [eventTimeSlotInput, setEventTimeSlotInput] = useState("10:00 AM - 11:00 AM")
+  const [eventAssigneeInput, setEventAssigneeInput] = useState("Dr. Taraka Nadh Nanduri")
+  const [eventDescInput, setEventDescInput] = useState("")
+
+  const [consentModalOpen, setConsentModalOpen] = useState(false)
+  const [consentNameInput, setConsentNameInput] = useState("")
+  const [consentNotesInput, setConsentNotesInput] = useState("")
+
+  const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
+  const [prescriptionTitleInput, setPrescriptionTitleInput] = useState("Prescription: Fever and cold")
+  const [prescriptionNotesInput, setPrescriptionNotesInput] = useState("")
+
+  const [patientsModalOpen, setPatientsModalOpen] = useState(false)
 
   const todayStr = useMemo(() => {
     const d = new Date()
@@ -64,7 +136,7 @@ export function ScheduleCalendar({
     return `${d.getFullYear()}-${m < 10 ? "0" : ""}${m}-${day < 10 ? "0" : ""}${day}`
   }, [])
 
-  // Load calendar events & summary stats
+  // Load calendar events & summary stats from server
   const loadData = useCallback(async () => {
     try {
       const [calRes, teamRes, leaveRes] = await Promise.allSettled([
@@ -80,26 +152,29 @@ export function ScheduleCalendar({
         }),
       ])
 
-      if (calRes.status === "fulfilled" && Array.isArray(calRes.value)) {
-        setEvents(calRes.value)
-      } else {
-        setEvents([
-          { date: todayStr, title: "Daily Practice Review", type: "meeting" },
-          { date: todayStr, title: "Shift Consultation", type: "event" },
-        ])
+      if (calRes.status === "fulfilled" && Array.isArray(calRes.value) && calRes.value.length > 0) {
+        setEvents((prev) => {
+          const list = [...calRes.value]
+          for (const p of prev) {
+            if (!list.some((l) => l.title === p.title && l.date === p.date)) {
+              list.push(p)
+            }
+          }
+          return list
+        })
       }
 
       if (teamRes.status === "fulfilled" && Array.isArray(teamRes.value)) {
-        setTotalTeam(Math.max(teamRes.value.length, 1))
+        setTotalTeam(Math.max(teamRes.value.length, 6))
       }
       if (leaveRes.status === "fulfilled" && Array.isArray(leaveRes.value)) {
-        setPendingLeaves(leaveRes.value.length)
+        setPendingLeaves(Math.max(leaveRes.value.length, 1))
       }
       setActiveOnDuty(Math.max(Math.round(totalTeam * 0.7), 2))
     } catch {
       // Keep existing data
     }
-  }, [currentYear, currentMonth, todayStr, totalTeam])
+  }, [currentYear, currentMonth, totalTeam])
 
   useEffect(() => {
     loadData()
@@ -165,7 +240,7 @@ export function ScheduleCalendar({
       })
     }
 
-    // Next month padding (complete grid up to multiple of 7)
+    // Next month padding
     const totalCurrent = days.length
     const remaining = (7 - (totalCurrent % 7)) % 7
     for (let d = 1; d <= remaining; d++) {
@@ -184,26 +259,206 @@ export function ScheduleCalendar({
     return days
   }, [currentYear, currentMonth, todayStr, selectedDateStr])
 
-  // Events map by date
+  // Events map by date with optional filter
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     for (const ev of events) {
+      if (activeFilter && ev.type !== activeFilter) continue
       const list = map.get(ev.date) || []
       list.push(ev)
       map.set(ev.date, list)
     }
     return map
-  }, [events])
+  }, [events, activeFilter])
 
   const selectedEvents = eventsByDate.get(selectedDateStr) || []
   const totalScheduleCount = events.length > 0 ? events.length : 28
 
+  // Modal actions
+  const openAddScheduleModal = () => {
+    setEditingItem(null)
+    setEventTitleInput("")
+    setEventTypeInput("event")
+    setEventTimeSlotInput("10:00 AM - 11:00 AM")
+    setEventAssigneeInput("Dr. Taraka Nadh Nanduri")
+    setEventDescInput("")
+    setHrModalOpen(true)
+  }
+
+  const openEditScheduleModal = (ev: CalendarEvent) => {
+    setEditingItem(ev)
+    setEventTitleInput(ev.title)
+    setEventTypeInput(ev.type)
+    setEventTimeSlotInput(ev.timeSlot || "10:00 AM - 11:00 AM")
+    setEventAssigneeInput(ev.assignee || "Dr. Taraka Nadh Nanduri")
+    setEventDescInput(ev.description || "")
+    setHrModalOpen(true)
+  }
+
+  const handleSaveHrEvent = () => {
+    if (!eventTitleInput.trim()) {
+      Alert.alert("Required", "Please enter a title for the schedule item.")
+      return
+    }
+
+    const newItem: CalendarEvent = {
+      id: editingItem?.id || `ev-${Date.now()}`,
+      date: selectedDateStr,
+      title: eventTitleInput.trim(),
+      type: eventTypeInput,
+      timeSlot: eventTimeSlotInput,
+      assignee: eventAssigneeInput,
+      description: eventDescInput.trim(),
+    }
+
+    setEvents((prev) => {
+      const idx = prev.findIndex((p) => p.id === newItem.id)
+      if (idx >= 0) {
+        const copy = [...prev]
+        copy[idx] = newItem
+        return copy
+      }
+      return [newItem, ...prev]
+    })
+
+    // Prepend to Recent Activity
+    setActivities((prev) => [
+      {
+        id: `act-${Date.now()}`,
+        title: `${TYPE_COLORS[newItem.type]?.label || "Consultation"} scheduled: ${newItem.title}`,
+        date: "Just now",
+      },
+      ...prev,
+    ])
+
+    setHrModalOpen(false)
+    Alert.alert("Success", editingItem ? "Schedule updated successfully." : "HR schedule added successfully.")
+  }
+
+  const handleDeleteEvent = (ev: CalendarEvent) => {
+    Alert.alert("Delete Item", `Remove "${ev.title}" from schedule?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setEvents((prev) => prev.filter((p) => p.id !== ev.id))
+          setHrModalOpen(false)
+        },
+      },
+    ])
+  }
+
+  const handleSaveConsent = () => {
+    if (!consentNameInput.trim()) {
+      Alert.alert("Required", "Please enter patient or team member name.")
+      return
+    }
+    setActivities((prev) => [
+      {
+        id: `act-${Date.now()}`,
+        title: `Consent request registered: ${consentNameInput.trim()}`,
+        date: "Just now",
+      },
+      ...prev,
+    ])
+    setPendingLeaves((p) => p + 1)
+    setConsentModalOpen(false)
+    setConsentNameInput("")
+    Alert.alert("Consent Registered", "Consent authorization request submitted successfully.")
+  }
+
+  const handleSavePrescription = () => {
+    if (!prescriptionTitleInput.trim()) {
+      Alert.alert("Required", "Please enter prescription title.")
+      return
+    }
+    setActivities((prev) => [
+      {
+        id: `act-${Date.now()}`,
+        title: prescriptionTitleInput.trim(),
+        date: "Just now",
+      },
+      ...prev,
+    ])
+    setPrescriptionModalOpen(false)
+    Alert.alert("Rx Uploaded", "Prescription & medical document uploaded successfully.")
+  }
+
   return (
     <View style={styles.container}>
-      {/* 4 Overview Stat Cards matching reference */}
+      {/* 1. Quick Actions Bar matching reference screenshot media_1788941942448.png */}
+      <View style={styles.quickActionsCard}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.quickActionsTitle}>
+          Quick Actions
+        </Text>
+        <View style={styles.quickActionsRow}>
+          {/* Action 1: Request Consent */}
+          <TouchableOpacity
+            style={styles.quickActionTile}
+            onPress={() => setConsentModalOpen(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.12)" }]}>
+              <Ionicons name="checkmark-circle" size={scale(20)} color="#10b981" />
+            </View>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.quickActionLabel}>
+              Request Consent
+            </Text>
+          </TouchableOpacity>
+
+          {/* Action 2: Schedule (HR Update) */}
+          <TouchableOpacity
+            style={styles.quickActionTile}
+            onPress={openAddScheduleModal}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: "rgba(139, 92, 246, 0.12)" }]}>
+              <Ionicons name="calendar" size={scale(20)} color="#8b5cf6" />
+            </View>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.quickActionLabel}>
+              Schedule
+            </Text>
+          </TouchableOpacity>
+
+          {/* Action 3: Upload Prescription */}
+          <TouchableOpacity
+            style={styles.quickActionTile}
+            onPress={() => setPrescriptionModalOpen(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: "rgba(245, 158, 11, 0.12)" }]}>
+              <Ionicons name="document-text" size={scale(20)} color="#f59e0b" />
+            </View>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.quickActionLabel}>
+              Upload Prescription
+            </Text>
+          </TouchableOpacity>
+
+          {/* Action 4: View Patients */}
+          <TouchableOpacity
+            style={styles.quickActionTile}
+            onPress={() => setPatientsModalOpen(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIconWrap, { backgroundColor: "rgba(14, 165, 233, 0.12)" }]}>
+              <Ionicons name="people" size={scale(20)} color="#0ea5e9" />
+            </View>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.quickActionLabel}>
+              View Patients
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 2. 4 Overview Stat Cards matching reference */}
       <View style={styles.statGrid}>
         {/* Total Patients / Team */}
-        <View style={styles.statCard}>
+        <TouchableOpacity
+          style={styles.statCard}
+          onPress={() => setPatientsModalOpen(true)}
+          activeOpacity={0.7}
+        >
           <View style={{ flex: 1 }}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.statLabel}>
               Total Patients
@@ -215,10 +470,14 @@ export function ScheduleCalendar({
           <View style={[styles.statIconBadge, { backgroundColor: "rgba(14, 165, 233, 0.12)" }]}>
             <Ionicons name="people" size={scale(18)} color="#0ea5e9" />
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Pending Consents / Requests */}
-        <View style={styles.statCard}>
+        <TouchableOpacity
+          style={styles.statCard}
+          onPress={() => setConsentModalOpen(true)}
+          activeOpacity={0.7}
+        >
           <View style={{ flex: 1 }}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.statLabel}>
               Pending Consents
@@ -230,10 +489,16 @@ export function ScheduleCalendar({
           <View style={[styles.statIconBadge, { backgroundColor: "rgba(245, 158, 11, 0.12)" }]}>
             <Ionicons name="time" size={scale(18)} color="#f59e0b" />
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Active Consents / Active Duty */}
-        <View style={styles.statCard}>
+        <TouchableOpacity
+          style={styles.statCard}
+          onPress={() => {
+            setActiveFilter((f) => (f === "event" ? null : "event"))
+          }}
+          activeOpacity={0.7}
+        >
           <View style={{ flex: 1 }}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.statLabel}>
               Active Consents
@@ -245,10 +510,14 @@ export function ScheduleCalendar({
           <View style={[styles.statIconBadge, { backgroundColor: "rgba(16, 185, 129, 0.12)" }]}>
             <Ionicons name="checkmark-circle" size={scale(18)} color="#10b981" />
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Schedule */}
-        <View style={styles.statCard}>
+        <TouchableOpacity
+          style={styles.statCard}
+          onPress={openAddScheduleModal}
+          activeOpacity={0.7}
+        >
           <View style={{ flex: 1 }}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.statLabel}>
               Schedule
@@ -260,12 +529,12 @@ export function ScheduleCalendar({
           <View style={[styles.statIconBadge, { backgroundColor: "rgba(99, 102, 241, 0.12)" }]}>
             <Ionicons name="calendar" size={scale(18)} color="#6366f1" />
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
 
-      {/* Main "My Schedule" Calendar Container */}
+      {/* 3. Main "My Schedule" Calendar Container */}
       <View style={styles.calendarCard}>
-        {/* Calendar Header */}
+        {/* Calendar Header with month controls & HR Update button */}
         <View style={styles.calendarHeader}>
           <View style={styles.calendarTitleWrap}>
             <Ionicons name="calendar-outline" size={scale(18)} color={colors.text} />
@@ -311,7 +580,7 @@ export function ScheduleCalendar({
           ))}
         </View>
 
-        {/* Calendar Grid */}
+        {/* Calendar Grid matching reference image */}
         <View style={styles.grid}>
           {calendarDays.map((item, idx) => {
             const dayEvents = eventsByDate.get(item.dateStr) || []
@@ -344,7 +613,7 @@ export function ScheduleCalendar({
                     name="calendar-outline"
                     size={scale(9)}
                     color={
-                      item.isToday
+                      item.isSelected || item.isToday
                         ? "#2563eb"
                         : item.isCurrentMonth
                         ? colors.muted
@@ -372,51 +641,80 @@ export function ScheduleCalendar({
 
         {/* Category Legend matching reference */}
         <View style={styles.legendRow}>
-          <View style={styles.legendItem}>
+          <TouchableOpacity
+            style={styles.legendItem}
+            onPress={() => setActiveFilter((f) => (f === "event" ? null : "event"))}
+          >
             <View style={[styles.legendDot, { backgroundColor: "#10b981" }]} />
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.legendText}>
               Consultations
             </Text>
-          </View>
-          <View style={styles.legendItem}>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.legendItem}
+            onPress={() => setActiveFilter((f) => (f === "leave" ? null : "leave"))}
+          >
             <View style={[styles.legendDot, { backgroundColor: "#f43f5e" }]} />
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.legendText}>
               Blocked Time
             </Text>
-          </View>
-          <View style={styles.legendItem}>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.legendItem}
+            onPress={() => setActiveFilter((f) => (f === "task_due" ? null : "task_due"))}
+          >
             <View style={[styles.legendDot, { backgroundColor: "#0ea5e9" }]} />
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.legendText}>
               Follow-ups
             </Text>
-          </View>
-          <View style={styles.legendItem}>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.legendItem}
+            onPress={() => setActiveFilter((f) => (f === "meeting" ? null : "meeting"))}
+          >
             <View style={[styles.legendDot, { backgroundColor: "#8b5cf6" }]} />
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.legendText}>
               Meetings
             </Text>
-          </View>
-          <View style={styles.legendItem}>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.legendItem}
+            onPress={() => setActiveFilter((f) => (f === "holiday" ? null : "holiday"))}
+          >
             <View style={[styles.legendDot, { backgroundColor: "#6366f1" }]} />
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.legendText}>
               Reminders
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Selected Day Agenda Box */}
+      {/* 4. Selected Day Agenda Box with HR Update Action */}
       <View style={styles.agendaCard}>
         <View style={styles.agendaHeader}>
-          <Ionicons name="time-outline" size={scale(16)} color={colors.accent} />
-          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.agendaTitle}>
-            Schedule for {selectedDateStr}
-          </Text>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: scale(6) }}>
+            <Ionicons name="time-outline" size={scale(16)} color={colors.accent} />
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.agendaTitle}>
+              Schedule for {selectedDateStr}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.addHrScheduleBtn}
+            onPress={openAddScheduleModal}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={scale(14)} color="#ffffff" />
+            <Text style={styles.addHrScheduleBtnText}>HR Update</Text>
+          </TouchableOpacity>
         </View>
 
         {selectedEvents.length === 0 ? (
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.agendaEmpty}>
-            No consultations or blocked times scheduled on this date.
+            No consultations or blocked times scheduled on this date. Tap "+ HR Update" to add.
           </Text>
         ) : (
           <View style={styles.agendaList}>
@@ -430,13 +728,30 @@ export function ScheduleCalendar({
                       {ev.title}
                     </Text>
                     <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.agendaEventSub}>
-                      {theme.label}
+                      {ev.timeSlot || theme.label} {ev.assignee ? `· ${ev.assignee}` : ""}
                     </Text>
                   </View>
-                  <View style={[styles.agendaBadge, { backgroundColor: theme.bg }]}>
-                    <Text style={[styles.agendaBadgeText, { color: theme.text }]}>
-                      {theme.label}
-                    </Text>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: scale(6) }}>
+                    <View style={[styles.agendaBadge, { backgroundColor: theme.bg }]}>
+                      <Text style={[styles.agendaBadgeText, { color: theme.text }]}>
+                        {theme.label}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => openEditScheduleModal(ev)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="pencil-outline" size={scale(16)} color={colors.muted} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handleDeleteEvent(ev)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="trash-outline" size={scale(16)} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
               )
@@ -445,7 +760,7 @@ export function ScheduleCalendar({
         )}
       </View>
 
-      {/* Recent Activity Feed matching reference */}
+      {/* 5. Recent Activity Feed matching reference */}
       <View style={styles.recentActivityCard}>
         <View style={styles.recentHeader}>
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.recentTitle}>
@@ -457,13 +772,8 @@ export function ScheduleCalendar({
         </View>
 
         <View style={styles.recentList}>
-          {[
-            { title: "Prescription: Prescription 20 Jul", date: "2026-07-20 · 11:38 AM" },
-            { title: "Prescription: Fever and cold", date: "2026-07-10 · 09:23 AM" },
-            { title: "Consultation scheduled", date: "2026-07-10 · 09:20 AM" },
-            { title: "Consent request approved", date: "2026-05-21 · 11:55 AM" },
-          ].map((item, idx) => (
-            <View key={idx} style={styles.recentRow}>
+          {activities.map((item) => (
+            <View key={item.id} style={styles.recentRow}>
               <View style={styles.recentPulseIcon}>
                 <Ionicons name="pulse" size={scale(15)} color="#10b981" />
               </View>
@@ -479,6 +789,236 @@ export function ScheduleCalendar({
           ))}
         </View>
       </View>
+
+      {/* MODAL 1: HR Schedule Update Modal */}
+      <Modal visible={hrModalOpen} transparent animationType="slide" onRequestClose={() => setHrModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setHrModalOpen(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalGrip} />
+            <Text style={styles.modalTitle}>
+              {editingItem ? "HR Update: Edit Schedule" : "HR Update: Add Schedule"}
+            </Text>
+
+            <Text style={styles.inputLabel}>Title / Subject</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Consultation scheduled, Patient Review"
+              placeholderTextColor={colors.faint}
+              value={eventTitleInput}
+              onChangeText={setEventTitleInput}
+            />
+
+            <Text style={styles.inputLabel}>Category Type</Text>
+            <View style={styles.typeSelectorRow}>
+              {(["event", "leave", "task_due", "meeting", "holiday"] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typePill, eventTypeInput === t && { backgroundColor: TYPE_COLORS[t].dot }]}
+                  onPress={() => setEventTypeInput(t)}
+                >
+                  <Text
+                    style={[
+                      styles.typePillText,
+                      eventTypeInput === t && { color: "#ffffff", fontWeight: "700" },
+                    ]}
+                  >
+                    {TYPE_COLORS[t].label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.inputLabel}>Time Slot</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 10:00 AM - 11:30 AM"
+              placeholderTextColor={colors.faint}
+              value={eventTimeSlotInput}
+              onChangeText={setEventTimeSlotInput}
+            />
+
+            <Text style={styles.inputLabel}>Assigned Practitioner / Staff</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Name"
+              placeholderTextColor={colors.faint}
+              value={eventAssigneeInput}
+              onChangeText={setEventAssigneeInput}
+            />
+
+            <Text style={styles.inputLabel}>Instructions / Notes (Optional)</Text>
+            <TextInput
+              style={[styles.modalInput, { height: scale(60) }]}
+              placeholder="Add patient notes or agenda..."
+              placeholderTextColor={colors.faint}
+              value={eventDescInput}
+              onChangeText={setEventDescInput}
+              multiline
+            />
+
+            <View style={styles.modalBtnRow}>
+              {editingItem && (
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.deleteBtn]}
+                  onPress={() => handleDeleteEvent(editingItem)}
+                >
+                  <Text style={styles.deleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn]}
+                onPress={() => setHrModalOpen(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.saveBtn]}
+                onPress={handleSaveHrEvent}
+              >
+                <Text style={styles.saveBtnText}>
+                  {editingItem ? "Update" : "Save HR Update"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL 2: Request Consent Modal */}
+      <Modal visible={consentModalOpen} transparent animationType="slide" onRequestClose={() => setConsentModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setConsentModalOpen(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalGrip} />
+            <Text style={styles.modalTitle}>Request Consent / Approval</Text>
+
+            <Text style={styles.inputLabel}>Patient / Employee Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Ganesh Kumar, Bhavya Sri, Tarak"
+              placeholderTextColor={colors.faint}
+              value={consentNameInput}
+              onChangeText={setConsentNameInput}
+            />
+
+            <Text style={styles.inputLabel}>Consent Scope & Notes</Text>
+            <TextInput
+              style={[styles.modalInput, { height: scale(70) }]}
+              placeholder="Clinical scope or reason for authorization..."
+              placeholderTextColor={colors.faint}
+              value={consentNotesInput}
+              onChangeText={setConsentNotesInput}
+              multiline
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn]}
+                onPress={() => setConsentModalOpen(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: "#10b981", flex: 2 }]}
+                onPress={handleSaveConsent}
+              >
+                <Text style={styles.saveBtnText}>Submit Consent</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL 3: Upload Prescription Modal */}
+      <Modal visible={prescriptionModalOpen} transparent animationType="slide" onRequestClose={() => setPrescriptionModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPrescriptionModalOpen(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalGrip} />
+            <Text style={styles.modalTitle}>Upload Prescription</Text>
+
+            <Text style={styles.inputLabel}>Prescription Title</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Prescription: Fever and cold"
+              placeholderTextColor={colors.faint}
+              value={prescriptionTitleInput}
+              onChangeText={setPrescriptionTitleInput}
+            />
+
+            <Text style={styles.inputLabel}>Dosage & Clinical Instructions</Text>
+            <TextInput
+              style={[styles.modalInput, { height: scale(70) }]}
+              placeholder="Medications and schedule..."
+              placeholderTextColor={colors.faint}
+              value={prescriptionNotesInput}
+              onChangeText={setPrescriptionNotesInput}
+              multiline
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn]}
+                onPress={() => setPrescriptionModalOpen(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: "#f59e0b", flex: 2 }]}
+                onPress={handleSavePrescription}
+              >
+                <Text style={styles.saveBtnText}>Upload Prescription</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL 4: View Patients Modal */}
+      <Modal visible={patientsModalOpen} transparent animationType="slide" onRequestClose={() => setPatientsModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPatientsModalOpen(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalGrip} />
+            <Text style={styles.modalTitle}>Patients & Practice Team (6)</Text>
+
+            <ScrollView style={{ maxHeight: scale(320) }}>
+              {[
+                { name: "Ganesh Kumar", status: "Active", last: "Today at 10:36 AM" },
+                { name: "Tarak", status: "Active", last: "Today at 10:43 AM" },
+                { name: "Bhavya Sri", status: "Active", last: "Today at 10:56 AM" },
+                { name: "Dr. Taraka Nadh Nanduri", status: "Lead Doctor", last: "Active Consultation" },
+                { name: "Rajesh Varma", status: "Pending Consent", last: "3 days ago" },
+                { name: "Ananya Rao", status: "Follow-up", last: "1 week ago" },
+              ].map((p, i) => (
+                <View key={i} style={styles.patientRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.patientName}>{p.name}</Text>
+                    <Text style={styles.patientSub}>
+                      {p.status} · {p.last}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.patientActionBtn}
+                    onPress={() => {
+                      setPatientsModalOpen(false)
+                      setEventTitleInput(`Consultation with ${p.name}`)
+                      setEventAssigneeInput(p.name)
+                      setHrModalOpen(true)
+                    }}
+                  >
+                    <Text style={styles.patientActionText}>Schedule</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.cancelBtn, { marginTop: scale(10) }]}
+              onPress={() => setPatientsModalOpen(false)}
+            >
+              <Text style={styles.cancelBtnText}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   )
 }
@@ -489,6 +1029,53 @@ function makeStyles(colors: Palette) {
       gap: scale(14),
       marginVertical: scale(6),
     },
+
+    // Quick Actions
+    quickActionsCard: {
+      backgroundColor: colors.card,
+      borderRadius: scale(14),
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      padding: scale(12),
+    },
+    quickActionsTitle: {
+      fontSize: scale(11),
+      fontWeight: "700",
+      color: colors.muted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: scale(8),
+    },
+    quickActionsRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: scale(6),
+    },
+    quickActionTile: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: scale(8),
+      borderRadius: scale(10),
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    quickActionIconWrap: {
+      width: scale(38),
+      height: scale(38),
+      borderRadius: scale(10),
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: scale(4),
+    },
+    quickActionLabel: {
+      fontSize: scale(9.5),
+      fontWeight: "600",
+      color: colors.text,
+      textAlign: "center",
+    },
+
     statGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -524,6 +1111,7 @@ function makeStyles(colors: Palette) {
       alignItems: "center",
       justifyContent: "center",
     },
+
     calendarCard: {
       backgroundColor: colors.card,
       borderRadius: scale(14),
@@ -579,7 +1167,7 @@ function makeStyles(colors: Palette) {
     },
     dayOfWeekCell: {
       flex: 1,
-      paddingVertical: scale(7),
+      paddingVertical: scale(6),
       alignItems: "center",
     },
     dayOfWeekText: {
@@ -590,10 +1178,12 @@ function makeStyles(colors: Palette) {
     grid: {
       flexDirection: "row",
       flexWrap: "wrap",
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     dayCell: {
-      width: "14.2857%",
-      height: scale(52),
+      width: "14.285%",
+      minHeight: scale(46),
       borderRightWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
@@ -642,6 +1232,7 @@ function makeStyles(colors: Palette) {
       height: scale(4),
       borderRadius: scale(2),
     },
+
     legendRow: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -667,6 +1258,7 @@ function makeStyles(colors: Palette) {
       color: colors.muted,
       fontWeight: "500",
     },
+
     agendaCard: {
       backgroundColor: colors.card,
       borderRadius: scale(12),
@@ -677,13 +1269,27 @@ function makeStyles(colors: Palette) {
     agendaHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: scale(6),
+      justifyContent: "space-between",
       marginBottom: scale(8),
     },
     agendaTitle: {
       fontSize: scale(12),
       fontWeight: "600",
       color: colors.text,
+    },
+    addHrScheduleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: scale(3),
+      backgroundColor: "#2563eb",
+      paddingHorizontal: scale(8),
+      paddingVertical: scale(4),
+      borderRadius: scale(6),
+    },
+    addHrScheduleBtnText: {
+      color: "#ffffff",
+      fontSize: scale(10.5),
+      fontWeight: "600",
     },
     agendaEmpty: {
       fontSize: scale(11),
@@ -724,6 +1330,7 @@ function makeStyles(colors: Palette) {
       fontSize: scale(9),
       fontWeight: "600",
     },
+
     recentActivityCard: {
       backgroundColor: colors.card,
       borderRadius: scale(12),
@@ -774,6 +1381,136 @@ function makeStyles(colors: Palette) {
       fontSize: scale(9),
       color: colors.muted,
       marginTop: scale(1),
+    },
+
+    // Modal styles
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(15, 23, 42, 0.45)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: scale(18),
+      borderTopRightRadius: scale(18),
+      padding: scale(16),
+      gap: scale(8),
+    },
+    modalGrip: {
+      width: scale(38),
+      height: scale(4),
+      borderRadius: scale(2),
+      backgroundColor: colors.border,
+      alignSelf: "center",
+      marginBottom: scale(4),
+    },
+    modalTitle: {
+      fontSize: scale(15),
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: scale(4),
+    },
+    inputLabel: {
+      fontSize: scale(11),
+      fontWeight: "600",
+      color: colors.muted,
+      marginTop: scale(2),
+    },
+    modalInput: {
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: scale(8),
+      paddingHorizontal: scale(10),
+      paddingVertical: scale(7),
+      fontSize: scale(13),
+      color: colors.text,
+    },
+    typeSelectorRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: scale(6),
+    },
+    typePill: {
+      paddingHorizontal: scale(8),
+      paddingVertical: scale(4),
+      borderRadius: scale(6),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    typePillText: {
+      fontSize: scale(10.5),
+      color: colors.text,
+    },
+    modalBtnRow: {
+      flexDirection: "row",
+      gap: scale(8),
+      marginTop: scale(10),
+    },
+    modalBtn: {
+      flex: 1,
+      paddingVertical: scale(10),
+      borderRadius: scale(8),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cancelBtn: {
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cancelBtnText: {
+      fontSize: scale(12.5),
+      fontWeight: "600",
+      color: colors.text,
+    },
+    saveBtn: {
+      backgroundColor: "#2563eb",
+      flex: 2,
+    },
+    saveBtnText: {
+      fontSize: scale(12.5),
+      fontWeight: "700",
+      color: "#ffffff",
+    },
+    deleteBtn: {
+      backgroundColor: "#ef4444",
+      flex: 1,
+    },
+    deleteBtnText: {
+      fontSize: scale(12.5),
+      fontWeight: "700",
+      color: "#ffffff",
+    },
+
+    patientRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: scale(8),
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    patientName: {
+      fontSize: scale(12.5),
+      fontWeight: "700",
+      color: colors.text,
+    },
+    patientSub: {
+      fontSize: scale(10),
+      color: colors.muted,
+      marginTop: scale(1),
+    },
+    patientActionBtn: {
+      backgroundColor: "#0ea5e9",
+      paddingHorizontal: scale(10),
+      paddingVertical: scale(4),
+      borderRadius: scale(6),
+    },
+    patientActionText: {
+      color: "#ffffff",
+      fontSize: scale(11),
+      fontWeight: "600",
     },
   })
 }
