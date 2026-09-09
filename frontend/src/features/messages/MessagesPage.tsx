@@ -271,7 +271,7 @@ export function MessagesPage() {
                             m.deletedAt && "italic opacity-70"
                           )}
                         >
-                          {m.deletedAt ? "This message was deleted" : m.body}
+                          {m.deletedAt ? "This message was deleted" : (m.body ?? "").split("|uri:")[0]}
                         </p>
                         <p
                           className={cn(

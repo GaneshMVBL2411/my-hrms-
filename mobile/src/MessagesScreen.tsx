@@ -24,6 +24,15 @@ import * as DocumentPicker from "expo-document-picker"
 import * as Location from "expo-location"
 import * as Sharing from "expo-sharing"
 import * as MediaLibrary from "expo-media-library/legacy"
+import * as FileSystem from "expo-file-system/legacy"
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  createAudioPlayer,
+  type AudioPlayer,
+} from "expo-audio"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import {
@@ -136,6 +145,7 @@ export function MessagesScreen({
   const [isRecording, setIsRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
   const inputRef = useRef<TextInput>(null)
   const [sending, setSending] = useState(false)
   const [outgoing, setOutgoing] = useState<Outgoing[]>([])
@@ -308,30 +318,96 @@ export function MessagesScreen({
     await deliver(localId, body, openWith.id)
   }
 
-  const startRecording = () => {
+  const startRecording = async () => {
     Keyboard.dismiss()
     setShowEmoji(false)
-    setIsRecording(true)
-    setRecordSeconds(0)
-    if (recordTimerRef.current) clearInterval(recordTimerRef.current)
-    recordTimerRef.current = setInterval(() => {
-      setRecordSeconds((s) => s + 1)
-    }, 1000)
+
+    try {
+      const perm = await requestRecordingPermissionsAsync()
+      if (!perm.granted) {
+        Alert.alert(
+          "Permission Required",
+          "Microphone access is needed to record voice messages."
+        )
+        return
+      }
+
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      })
+
+      await audioRecorder.prepareToRecordAsync()
+      audioRecorder.record()
+
+      setIsRecording(true)
+      setRecordSeconds(0)
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+      recordTimerRef.current = setInterval(() => {
+        setRecordSeconds((s) => s + 1)
+      }, 1000)
+    } catch (err) {
+      console.warn("Failed to start audio recording:", err)
+      // Fallback: visual timer mode if native audio stream encounters transient issue
+      setIsRecording(true)
+      setRecordSeconds(0)
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+      recordTimerRef.current = setInterval(() => {
+        setRecordSeconds((s) => s + 1)
+      }, 1000)
+    }
   }
 
-  const cancelRecording = () => {
+  const cancelRecording = async () => {
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current)
       recordTimerRef.current = null
     }
+    try {
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop()
+      }
+    } catch {}
     setIsRecording(false)
     setRecordSeconds(0)
   }
 
-  const sendRecording = () => {
+  const sendRecording = async () => {
     const dur = Math.max(recordSeconds, 1)
-    cancelRecording()
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current)
+      recordTimerRef.current = null
+    }
+
+    let recordedUri: string | null = null
+    try {
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop()
+        recordedUri = audioRecorder.uri
+      }
+    } catch (err) {
+      console.warn("Error stopping audio recorder:", err)
+    }
+
+    setIsRecording(false)
+    setRecordSeconds(0)
+
     const formatted = `0:${dur < 10 ? "0" : ""}${dur}`
+
+    if (recordedUri) {
+      const safeName = `Voice_${Date.now()}.m4a`
+      const permUri = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}${safeName}`
+      try {
+        await FileSystem.copyAsync({ from: recordedUri, to: permUri })
+        sendContent(`🎤 Voice note (${formatted})|uri:${permUri}`)
+        return
+      } catch (copyErr) {
+        console.warn("Could not copy voice note to permanent storage:", copyErr)
+        sendContent(`🎤 Voice note (${formatted})|uri:${recordedUri}`)
+        return
+      }
+    }
+
     sendContent(`🎤 Voice note (${formatted})`)
   }
 
@@ -404,7 +480,22 @@ export function MessagesScreen({
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const doc = result.assets[0]
         const sizeStr = doc.size ? `${(doc.size / 1024).toFixed(0)} KB` : "File"
-        sendContent(`📄 Document: ${doc.name} (${sizeStr})|uri:${doc.uri}`)
+        let shareableUri = doc.uri
+
+        // Copy to app storage so the file is permanently accessible and avoids content provider expiration
+        try {
+          const safeName = `${Date.now()}_${doc.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+          const dest = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}${safeName}`
+          await FileSystem.copyAsync({
+            from: doc.uri,
+            to: dest,
+          })
+          shareableUri = dest
+        } catch (copyErr) {
+          console.warn("Could not copy picked document:", copyErr)
+        }
+
+        sendContent(`📄 Document: ${doc.name} (${sizeStr})|uri:${shareableUri}`)
       }
     } catch (e) {
       Alert.alert("Document Error", (e as Error).message || "Could not pick document.")
@@ -1332,7 +1423,7 @@ export function MessagesScreen({
                   style={styles.personSub}
                 >
                   {thread
-                    ? thread.last_body
+                    ? (thread.last_body ? thread.last_body.split("|uri:")[0] : "")
                     : [contact?.designation, contact?.department].filter(Boolean).join(" · ") ||
                       contact?.role.replace(/_/g, " ")}
                 </Text>
@@ -1401,8 +1492,10 @@ function Bubble({
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackProgress, setPlaybackProgress] = useState(0)
   const playbackTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const soundPlayerRef = useRef<AudioPlayer | null>(null)
 
   const isVoice = !gone && body.startsWith("🎤 Voice note")
+  const [voicePart, voiceUri] = isVoice ? body.split("|uri:") : ["", ""]
   const isDoc = !gone && body.startsWith("📄 Document:")
   const isPhoto = !gone && (body.startsWith("🖼️ Photo:") || body.startsWith("📷 Photo Proof:") || body.startsWith("✨ AI images:"))
   const isLocation = !gone && body.startsWith("📍 Location:")
@@ -1411,19 +1504,59 @@ function Bubble({
   const isPoll = !gone && body.startsWith("📊 Poll:")
   const isEvent = !gone && body.startsWith("📅 Event:")
 
-  const togglePlayVoice = () => {
+  const stopVoicePlayback = () => {
+    if (playbackTimer.current) {
+      clearInterval(playbackTimer.current)
+      playbackTimer.current = null
+    }
+    try {
+      if (soundPlayerRef.current) {
+        soundPlayerRef.current.pause()
+      }
+    } catch {}
+    setIsPlaying(false)
+  }
+
+  const togglePlayVoice = async () => {
     if (isPlaying) {
-      if (playbackTimer.current) clearInterval(playbackTimer.current)
-      setIsPlaying(false)
+      stopVoicePlayback()
     } else {
       setIsPlaying(true)
       setPlaybackProgress(0)
+
+      if (voiceUri) {
+        try {
+          await setAudioModeAsync({
+            allowsRecording: false,
+            playsInSilentMode: true,
+          })
+
+          if (!soundPlayerRef.current) {
+            soundPlayerRef.current = createAudioPlayer({ uri: voiceUri })
+            soundPlayerRef.current.addListener("playbackStatusUpdate", (status) => {
+              if (status.duration > 0) {
+                setPlaybackProgress(status.currentTime / status.duration)
+              }
+              if (status.didJustFinish) {
+                stopVoicePlayback()
+                setPlaybackProgress(0)
+              }
+            })
+          }
+          soundPlayerRef.current.play()
+          return
+        } catch (e) {
+          console.warn("Could not play recorded voice with expo-audio:", e)
+        }
+      }
+
+      // Fallback animated progress bar for simulated/legacy voice notes
       let p = 0
+      if (playbackTimer.current) clearInterval(playbackTimer.current)
       playbackTimer.current = setInterval(() => {
         p += 0.1
         if (p >= 1) {
-          if (playbackTimer.current) clearInterval(playbackTimer.current)
-          setIsPlaying(false)
+          stopVoicePlayback()
           setPlaybackProgress(0)
         } else {
           setPlaybackProgress(p)
@@ -1434,7 +1567,10 @@ function Bubble({
 
   useEffect(() => {
     return () => {
-      if (playbackTimer.current) clearInterval(playbackTimer.current)
+      stopVoicePlayback()
+      try {
+        soundPlayerRef.current?.remove()
+      } catch {}
     }
   }, [])
 
@@ -1487,7 +1623,7 @@ function Bubble({
                 maxFontSizeMultiplier={FONT_SCALE_CAP}
                 style={[styles.voiceDuration, mine && styles.voiceDurationMine]}
               >
-                {body.replace("🎤 Voice note ", "").replace(/[()]/g, "") || "0:04"}
+                {(voicePart || body).replace("🎤 Voice note ", "").replace(/[()]/g, "") || "0:04"}
               </Text>
             </View>
 
@@ -1502,15 +1638,49 @@ function Bubble({
           (() => {
             const [docPart, docUri] = body.split("|uri:")
             const handleDocPress = async () => {
-              if (docUri) {
-                try {
-                  if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(docUri)
-                  } else {
-                    Linking.openURL(docUri)
+              if (!docUri) return
+              try {
+                let shareUri = docUri
+                const docName = docPart.replace("📄 Document:", "").split("(")[0].trim() || "document"
+                const safeName = `${docName.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+
+                // 1. If remote (http/https), download it locally before sharing
+                if (docUri.startsWith("http://") || docUri.startsWith("https://")) {
+                  const target = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`
+                  const res = await FileSystem.downloadAsync(docUri, target)
+                  shareUri = res.uri
+                } else if (docUri.startsWith("content://")) {
+                  // 2. If it's an Android content:// URI, copy to FileSystem.cacheDirectory
+                  // because Android prevents ExpoSharing from reading cross-app content:// URIs
+                  const target = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`
+                  try {
+                    await FileSystem.copyAsync({ from: docUri, to: target })
+                    shareUri = target
+                  } catch (copyErr) {
+                    console.warn("Failed to copy content URI to cache:", copyErr)
                   }
-                } catch (e) {
-                  Alert.alert("File View", (e as Error).message || "Could not open file.")
+                }
+
+                // Check if file exists locally before sharing
+                const info = await FileSystem.getInfoAsync(shareUri).catch(() => ({ exists: false }))
+                const uriToShare = info.exists ? shareUri : docUri
+
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(uriToShare, {
+                    dialogTitle: docName,
+                  })
+                } else {
+                  await Linking.openURL(uriToShare)
+                }
+              } catch (e) {
+                console.warn("Doc open/share error:", e)
+                try {
+                  await Linking.openURL(docUri)
+                } catch {
+                  Alert.alert(
+                    "Open Document",
+                    `Unable to open "${docPart.replace("📄 Document:", "").split("(")[0].trim()}". The file may have been moved or requires a dedicated viewer app.`
+                  )
                 }
               }
             }
