@@ -13,6 +13,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -183,11 +184,33 @@ export function MessagesScreen({
     }
   }, [attachmentMenu, loadRecentPhotos])
 
+  const loadContactsList = useCallback(async () => {
+    try {
+      const serverContacts = await messageContacts().catch(() => [])
+      const rawName = user.email ? user.email.split("@")[0] : "Me"
+      const formattedName = rawName
+        .split(/[._-]/)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(" ")
+      const selfContact: Contact = {
+        user_id: user.id,
+        name: `${formattedName || "You"} (You)`,
+        role: user.role,
+        department: "Message yourself",
+        designation: "Personal notes & records",
+      }
+      const filtered = serverContacts.filter((c) => c.user_id !== user.id)
+      setContacts([selfContact, ...filtered])
+    } catch {
+      setContacts([])
+    }
+  }, [user.id, user.email, user.role])
+
   const handleOpenContactPicker = async () => {
     setAttachmentMenu(null)
     setPickingContact(true)
     if (contacts === null) {
-      setContacts(await messageContacts().catch(() => []))
+      await loadContactsList()
     }
   }
 
@@ -317,6 +340,23 @@ export function MessagesScreen({
     setOutgoing((q) => [...q, { localId, body, failed: false }])
     await deliver(localId, body, openWith.id)
   }
+
+  const handleForwardMessage = useCallback(async (msgBody: string) => {
+    try {
+      if (msgBody.startsWith("📋 Attendance:")) {
+        await Share.share({
+          message: "Team Attendance Summary (09/09/2026)\nPresent: 3 | Absent: 4 | On Leave: 0\n• Ganesh: 10:36 AM\n• Tarak: 10:43 AM\n• Bhavya Sri: 10:56 AM",
+          title: "Attendance Report",
+        })
+      } else {
+        await Share.share({
+          message: msgBody,
+        })
+      }
+    } catch {
+      // Ignored
+    }
+  }, [])
 
   const startRecording = async () => {
     Keyboard.dismiss()
@@ -580,6 +620,10 @@ export function MessagesScreen({
     }
 
     setDraft("")
+    if (body.trim().toLowerCase() === "/attendance" || body.trim().toLowerCase() === "attendance") {
+      await sendContent("📋 Attendance: Today's Team Attendance Summary")
+      return
+    }
     await sendContent(body)
   }
 
@@ -627,7 +671,7 @@ export function MessagesScreen({
 
     return (
       <KeyboardAvoidingView
-        style={styles.root}
+        style={[styles.root, styles.chatBackground]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
@@ -649,10 +693,10 @@ export function MessagesScreen({
           </View>
           <View style={{ flex: 1, marginLeft: scale(10) }}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.barTitle}>
-              {openWith.name}
+              {openWith.id === user.id ? `${openWith.name || user.email} (You)` : openWith.name}
             </Text>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.barSubtitle}>
-              online
+              {openWith.id === user.id ? "Message yourself" : "online"}
             </Text>
           </View>
           <TouchableOpacity
@@ -671,7 +715,21 @@ export function MessagesScreen({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
-              sendContent("📋 Attendance: Today's Team Attendance Summary")
+              Alert.alert(
+                "Conversation Options",
+                undefined,
+                [
+                  {
+                    text: "Send Team Attendance Report",
+                    onPress: () => sendContent("📋 Attendance: Today's Team Attendance Summary"),
+                  },
+                  {
+                    text: showSearch ? "Hide Search" : "Search in Conversation",
+                    onPress: () => setShowSearch((s) => !s),
+                  },
+                  { text: "Cancel", style: "cancel" },
+                ]
+              )
             }}
             hitSlop={10}
           >
@@ -745,6 +803,7 @@ export function MessagesScreen({
                   // Only your own messages, and only while they can still be
                   // changed — an option that always fails is worse than none.
                   onLongPress={mine && !gone && actionable(item) ? () => setActing(item) : undefined}
+                  onForward={() => handleForwardMessage(item.body ?? "")}
                 />
               )
             }}
@@ -762,6 +821,7 @@ export function MessagesScreen({
                       tick={o.failed ? "failed" : "pending"}
                       onLongPress={() => setActing(o)}
                       onPress={o.failed ? () => deliver(o.localId, o.body, openWith.id) : undefined}
+                      onForward={() => handleForwardMessage(o.body)}
                     />
                   ))}
                 </>
@@ -890,8 +950,10 @@ export function MessagesScreen({
                 value={draft}
                 onChangeText={setDraft}
                 onFocus={() => setShowEmoji(false)}
-                placeholder={`Message ${openWith.name}`}
-                placeholderTextColor={colors.faint}
+                placeholder="Message"
+                placeholderTextColor="#8696a0"
+                cursorColor="#00a884"
+                selectionColor="#00a884"
                 maxLength={MAX}
                 multiline
                 maxFontSizeMultiplier={FONT_SCALE_CAP}
@@ -1129,7 +1191,11 @@ export function MessagesScreen({
 
               {/* Recent Photos Grid Strip (Matching WhatsApp reference screenshot) */}
               <View style={styles.recentPhotosSection}>
-                <View style={styles.recentPhotosGrid}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recentPhotosScroll}
+                >
                   {recentPhotos.length > 0 ? (
                     recentPhotos.slice(0, 8).map((asset) => (
                       <TouchableOpacity
@@ -1164,7 +1230,7 @@ export function MessagesScreen({
                       </TouchableOpacity>
                     ))
                   )}
-                </View>
+                </ScrollView>
               </View>
             </Pressable>
           </Pressable>
@@ -1326,7 +1392,7 @@ export function MessagesScreen({
           onPress={async () => {
             if (picking) return setPicking(false)
             setPicking(true)
-            if (contacts === null) setContacts(await messageContacts().catch(() => []))
+            if (contacts === null) await loadContactsList()
           }}
           hitSlop={10}
         >
@@ -1468,6 +1534,161 @@ function withinEditWindow(m: Message): boolean {
  * was opened, and inventing a tick for something unmeasured would make the
  * other two untrustworthy.
  */
+function AttendanceMessageCard({
+  mine,
+  stamp,
+  tick,
+}: {
+  mine: boolean
+  stamp: string
+  tick: "pending" | "failed" | "sent" | "read" | null
+}) {
+  const styles = useStyles(makeStyles)
+  const [tab, setTab] = useState<"team" | "my">("team")
+  const [selectedDate, setSelectedDate] = useState("09/09/2026")
+
+  const rows =
+    tab === "team"
+      ? [
+          { name: "Ganesh", in: "10:36 AM", out: "—", hours: "—" },
+          { name: "Tarak", in: "10:43 AM", out: "—", hours: "—" },
+          { name: "Bhavya Sri", in: "10:56 AM", out: "—", hours: "—" },
+        ]
+      : [{ name: "Ganesh", in: "10:36 AM", out: "—", hours: "—" }]
+
+  const presentCount = tab === "team" ? 3 : 1
+  const absentCount = tab === "team" ? 4 : 0
+  const onLeaveCount = 0
+
+  return (
+    <View style={styles.attendanceCard}>
+      {/* Attendance Header & Segmented Switcher */}
+      <View style={styles.attendanceCardHeader}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceCardTitle}>
+          Attendance
+        </Text>
+        <View style={styles.attendancePillTabs}>
+          <TouchableOpacity
+            style={[styles.attendanceTabBtn, tab === "my" && styles.attendanceTabActive]}
+            onPress={() => setTab("my")}
+            activeOpacity={0.8}
+          >
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              style={[styles.attendanceTabText, tab === "my" && styles.attendanceTabTextActive]}
+            >
+              My Attendance
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.attendanceTabBtn, tab === "team" && styles.attendanceTabActive]}
+            onPress={() => setTab("team")}
+            activeOpacity={0.8}
+          >
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              style={[styles.attendanceTabText, tab === "team" && styles.attendanceTabTextActive]}
+            >
+              Team
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Date Dropdown Box matching reference screenshot */}
+      <TouchableOpacity
+        style={styles.attendanceDateSelector}
+        onPress={() => {
+          setSelectedDate((d) => (d === "09/09/2026" ? "08/09/2026" : "09/09/2026"))
+        }}
+        activeOpacity={0.7}
+      >
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceDateSelectorText}>
+          {selectedDate}
+        </Text>
+        <Ionicons name="chevron-down" size={scale(14)} color="#64748b" />
+      </TouchableOpacity>
+
+      {/* Stats Counter Row matching reference */}
+      <View style={styles.attendanceStatRow}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>
+          Present <Text style={styles.attendanceStatBold}>{presentCount}</Text>
+        </Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>
+          Absent <Text style={styles.attendanceStatBold}>{absentCount}</Text>
+        </Text>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>
+          On Leave <Text style={styles.attendanceStatBold}>{onLeaveCount}</Text>
+        </Text>
+      </View>
+
+      {/* Table matching screenshot columns: Employee | Check In | Check Out | Working Hours */}
+      <View style={styles.attendanceTable}>
+        {/* Table Header */}
+        <View style={styles.attendanceTableHeaderRow}>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTh, { flex: 1.15 }]}>
+            Employee
+          </Text>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTh, { flex: 0.95 }]}>
+            Check In
+          </Text>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTh, { flex: 0.95 }]}>
+            Check Out
+          </Text>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTh, { flex: 1.1 }]}>
+            Working Hours
+          </Text>
+        </View>
+
+        {/* Table Rows */}
+        {rows.map((row, idx) => (
+          <View
+            key={idx}
+            style={[
+              styles.attendanceTableRow,
+              idx === rows.length - 1 && { borderBottomWidth: 0 },
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              numberOfLines={1}
+              style={[styles.attendanceTableCell, styles.attendanceEmpName, { flex: 1.15 }]}
+            >
+              {row.name}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              style={[styles.attendanceTableCell, { flex: 0.95 }]}
+            >
+              {row.in}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              style={[styles.attendanceTableCell, { flex: 0.95, color: "#64748b" }]}
+            >
+              {row.out}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={FONT_SCALE_CAP}
+              style={[styles.attendanceTableCell, { flex: 1.1, color: "#64748b" }]}
+            >
+              {row.hours}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Bottom right timestamp and double blue checkmark */}
+      <View style={styles.attendanceMetaRow}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStampText}>
+          {stamp}
+        </Text>
+        <Ionicons name="checkmark-done" size={scale(14)} color="#53bdeb" style={{ marginLeft: scale(3) }} />
+      </View>
+    </View>
+  )
+}
+
 function Bubble({
   mine,
   gone,
@@ -1477,6 +1698,7 @@ function Bubble({
   tick,
   onLongPress,
   onPress,
+  onForward,
 }: {
   mine: boolean
   gone: boolean
@@ -1486,6 +1708,7 @@ function Bubble({
   tick: "pending" | "failed" | "sent" | "read" | null
   onLongPress?: () => void
   onPress?: () => void
+  onForward?: () => void
 }) {
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
@@ -1575,17 +1798,33 @@ function Bubble({
   }, [])
 
   return (
-    <Pressable
-      onLongPress={onLongPress}
-      onPress={onPress}
-      delayLongPress={280}
-      style={({ pressed }) => [
-        styles.bubbleRow,
-        mine ? styles.right : styles.left,
-        pressed && onLongPress ? { opacity: 0.7 } : null,
-      ]}
-    >
-      <View style={[styles.bubble, mine ? styles.mine : styles.theirs, gone && styles.goneBubble]}>
+    <View style={[styles.bubbleRow, mine ? styles.right : styles.left]}>
+      {mine && !gone && (
+        <TouchableOpacity
+          style={styles.bubbleForwardBtn}
+          onPress={onForward}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Forward message"
+        >
+          <Ionicons name="arrow-redo" size={scale(17)} color="#ffffff" />
+        </TouchableOpacity>
+      )}
+
+      <Pressable
+        onLongPress={onLongPress}
+        onPress={onPress}
+        delayLongPress={280}
+        style={({ pressed }) => [
+          styles.bubble,
+          isAttendance
+            ? styles.attendanceBubble
+            : mine
+            ? styles.mine
+            : styles.theirs,
+          gone && styles.goneBubble,
+          pressed && onLongPress ? { opacity: 0.8 } : null,
+        ]}
+      >
         {isVoice ? (
           <View style={styles.voiceNoteWrap}>
             <TouchableOpacity
@@ -1771,48 +2010,7 @@ function Bubble({
             )
           })()
         ) : isAttendance ? (
-          <View style={styles.attendanceCard}>
-            <View style={styles.attendanceCardHeader}>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceCardTitle}>Attendance</Text>
-              <View style={styles.attendancePillTabs}>
-                <View style={styles.attendanceTabInactive}>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceTabInactiveText}>My Attendance</Text>
-                </View>
-                <View style={styles.attendanceTabActive}>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceTabActiveText}>Team</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.attendanceDateRow}>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceDateText}>09/09/2026</Text>
-              <Ionicons name="chevron-down" size={scale(14)} color="#64748b" />
-            </View>
-            <View style={styles.attendanceStatRow}>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>Present <Text style={{ fontWeight: "700" }}>3</Text></Text>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>Absent <Text style={{ fontWeight: "700" }}>4</Text></Text>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.attendanceStatItem}>On Leave <Text style={{ fontWeight: "700" }}>0</Text></Text>
-            </View>
-            <View style={styles.attendanceTable}>
-              <View style={styles.attendanceTableRowHeader}>
-                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 1.1, fontWeight: "700" }]}>Employee</Text>
-                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 0.9, fontWeight: "700" }]}>Check In</Text>
-                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 1.1, fontWeight: "700" }]}>Login Place</Text>
-                <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 0.6, fontWeight: "700" }]}>Proof</Text>
-              </View>
-              {[
-                { name: "Ganesh", in: "10:36 AM", loc: "Madhapur", proof: "📸" },
-                { name: "Tarak", in: "10:43 AM", loc: "Hitech City", proof: "📸" },
-                { name: "Bhavya Sri", in: "10:56 AM", loc: "Gachibowli", proof: "📸" },
-              ].map((row, i) => (
-                <View key={i} style={styles.attendanceTableRow}>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 1.1 }]}>{row.name}</Text>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 0.9 }]}>{row.in}</Text>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 1.1, color: "#10b981" }]}>📍 {row.loc}</Text>
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.attendanceTableCell, { flex: 0.6, textAlign: "center" }]}>{row.proof}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
+          <AttendanceMessageCard mine={mine} stamp={stamp} tick={tick} />
         ) : isContact ? (
           (() => {
             const contactText = body.replace("👤 Contact:", "").trim()
@@ -1890,25 +2088,27 @@ function Bubble({
           </Text>
         )}
 
-        <View style={styles.metaRow}>
-          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.stamp, mine && styles.mineStamp]}>
-            {edited ? `edited · ${stamp}` : stamp}
-          </Text>
-          {tick === "pending" && (
-            <Ionicons name="time-outline" size={scale(12)} color={colors.onFillMuted} style={styles.tick} />
-          )}
-          {tick === "failed" && (
-            <Ionicons name="alert-circle" size={scale(13)} color={colors.tickFailed} style={styles.tick} />
-          )}
-          {tick === "sent" && (
-            <Ionicons name="checkmark" size={scale(13)} color={colors.onFillMuted} style={styles.tick} />
-          )}
-          {tick === "read" && (
-            <Ionicons name="checkmark-done" size={scale(13)} color={colors.tickRead} style={styles.tick} />
-          )}
-        </View>
-      </View>
-    </Pressable>
+        {!isAttendance && (
+          <View style={styles.metaRow}>
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.stamp, mine && styles.mineStamp]}>
+              {edited ? `edited · ${stamp}` : stamp}
+            </Text>
+            {tick === "pending" && (
+              <Ionicons name="time-outline" size={scale(12)} color={colors.onFillMuted} style={styles.tick} />
+            )}
+            {tick === "failed" && (
+              <Ionicons name="alert-circle" size={scale(13)} color={colors.tickFailed} style={styles.tick} />
+            )}
+            {tick === "sent" && (
+              <Ionicons name="checkmark" size={scale(13)} color={colors.onFillMuted} style={styles.tick} />
+            )}
+            {tick === "read" && (
+              <Ionicons name="checkmark-done" size={scale(13)} color={colors.tickRead} style={styles.tick} />
+            )}
+          </View>
+        )}
+      </Pressable>
+    </View>
   )
 }
 
@@ -2069,6 +2269,7 @@ function when(iso: string) {
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  chatBackground: { backgroundColor: "#efeae2" },
   centre: { paddingVertical: scale(40), alignItems: "center" },
   empty: { textAlign: "center", color: colors.muted, fontSize: scale(13), padding: scale(30) },
 
@@ -2132,7 +2333,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   unreadText: { color: colors.onFill, fontSize: scale(11), fontWeight: "700" },
 
   thread: { padding: scale(14), gap: scale(8), flexGrow: 1, justifyContent: "flex-end" },
-  bubbleRow: { flexDirection: "row" },
+  bubbleRow: { flexDirection: "row", alignItems: "center" },
   left: { justifyContent: "flex-start" },
   right: { justifyContent: "flex-end" },
   bubble: { maxWidth: "80%", borderRadius: scale(16), paddingHorizontal: scale(13), paddingVertical: scale(9) },
@@ -2432,15 +2633,20 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     marginBottom: scale(14),
   },
   whatsappPillTile: {
-    width: scale(54),
-    height: scale(54),
-    borderRadius: scale(27),
-    backgroundColor: colors.subtle,
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: scale(6),
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   whatsappActionLabel: {
     fontSize: scale(12),
@@ -2450,18 +2656,18 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   recentPhotosSection: {
     marginTop: scale(6),
-    paddingTop: scale(10),
+    paddingTop: scale(8),
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
-  recentPhotosGrid: {
+  recentPhotosScroll: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: scale(6),
+    gap: scale(8),
+    paddingHorizontal: scale(2),
   },
   recentPhotoThumbWrap: {
-    flex: 1,
-    aspectRatio: 1,
+    width: scale(76),
+    height: scale(76),
     borderRadius: scale(8),
     overflow: "hidden",
     backgroundColor: colors.subtle,
@@ -2553,16 +2759,34 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Attendance Bubble Card (Matching reference screenshot table)
-  attendanceCard: {
-    minWidth: scale(260),
-    maxWidth: scale(300),
-    backgroundColor: colors.card,
-    borderRadius: scale(10),
+  // Attendance Bubble Card (Matching reference screenshot media_1788946469552.png)
+  attendanceBubble: {
+    backgroundColor: "#e7ffdb",
+    borderRadius: scale(14),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0, 168, 132, 0.2)",
     padding: scale(10),
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: scale(6),
+    minWidth: scale(290),
+    maxWidth: "92%",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  bubbleForwardBtn: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "rgba(0, 0, 0, 0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginRight: scale(8),
+  },
+  attendanceCard: {
+    backgroundColor: "transparent",
+    gap: scale(5),
   },
   attendanceCardHeader: {
     flexDirection: "row",
@@ -2570,80 +2794,116 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     alignItems: "center",
   },
   attendanceCardTitle: {
-    fontSize: scale(14),
+    fontSize: scale(15),
     fontWeight: "700",
-    color: colors.text,
+    color: "#1e293b",
   },
   attendancePillTabs: {
     flexDirection: "row",
-    backgroundColor: colors.subtle,
-    borderRadius: scale(14),
+    backgroundColor: "#f1f5f9",
+    borderRadius: scale(16),
     padding: scale(2),
   },
-  attendanceTabInactive: {
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(3),
+  attendanceTabBtn: {
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(4),
     borderRadius: scale(12),
-  },
-  attendanceTabInactiveText: {
-    fontSize: scale(11),
-    color: colors.muted,
   },
   attendanceTabActive: {
-    backgroundColor: "#2563eb",
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(3),
-    borderRadius: scale(12),
+    backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
   },
-  attendanceTabActiveText: {
-    fontSize: scale(11),
-    color: "#ffffff",
+  attendanceTabText: {
+    fontSize: scale(11.5),
+    color: "#64748b",
+    fontWeight: "500",
+  },
+  attendanceTabTextActive: {
+    color: "#0f172a",
     fontWeight: "600",
   },
-  attendanceDateRow: {
+  attendanceDateSelector: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: scale(4),
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(7),
+    marginVertical: scale(3),
   },
-  attendanceDateText: {
-    fontSize: scale(12),
-    fontWeight: "600",
-    color: colors.muted,
+  attendanceDateSelectorText: {
+    fontSize: scale(12.5),
+    fontWeight: "500",
+    color: "#1e293b",
   },
   attendanceStatRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: scale(4),
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: scale(14),
+    marginVertical: scale(3),
   },
   attendanceStatItem: {
     fontSize: scale(11.5),
-    color: colors.text,
+    color: "#475569",
+  },
+  attendanceStatBold: {
+    fontWeight: "700",
+    color: "#0f172a",
   },
   attendanceTable: {
-    borderRadius: scale(6),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    borderRadius: scale(8),
     overflow: "hidden",
+    marginTop: scale(4),
   },
-  attendanceTableRowHeader: {
+  attendanceTableHeaderRow: {
     flexDirection: "row",
-    backgroundColor: colors.subtle,
-    paddingVertical: scale(5),
-    paddingHorizontal: scale(6),
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingVertical: scale(7),
+    paddingHorizontal: scale(8),
+    alignItems: "center",
+  },
+  attendanceTh: {
+    fontSize: scale(11),
+    fontWeight: "600",
+    color: "#475569",
   },
   attendanceTableRow: {
     flexDirection: "row",
-    paddingVertical: scale(5),
-    paddingHorizontal: scale(6),
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f8fafc",
+    paddingVertical: scale(7),
+    paddingHorizontal: scale(8),
+    alignItems: "center",
   },
   attendanceTableCell: {
     fontSize: scale(11),
-    color: colors.text,
+    color: "#1e293b",
+  },
+  attendanceEmpName: {
+    fontWeight: "500",
+    color: "#0f172a",
+  },
+  attendanceMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: scale(4),
+  },
+  attendanceStampText: {
+    fontSize: scale(10),
+    color: "#64748b",
   },
 
   // Contact Message Card
