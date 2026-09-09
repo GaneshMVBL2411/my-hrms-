@@ -542,3 +542,38 @@ export async function employeeOptions(): Promise<EmployeeOption[]> {
     limit: 500,
   })
 }
+
+export interface CompanyEventPayload {
+  title: string
+  description?: string
+  event_date: string
+  event_type: "meeting" | "event" | "holiday"
+}
+
+export async function createCompanyEvent(payload: CompanyEventPayload): Promise<void> {
+  await request("/query", {
+    method: "POST",
+    body: JSON.stringify({
+      table: "company_events",
+      action: "insert",
+      payload: {
+        title: payload.title.trim(),
+        description: payload.description?.trim() || null,
+        event_date: payload.event_date,
+        event_type: payload.event_type,
+      },
+    }),
+  })
+}
+
+export async function deleteCompanyEvent(id: number): Promise<void> {
+  await request("/query", {
+    method: "POST",
+    body: JSON.stringify({
+      table: "company_events",
+      action: "delete",
+      filters: [{ column: "id", op: "eq", value: id }],
+    }),
+  })
+}
+

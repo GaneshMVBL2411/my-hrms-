@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import {
   addMonths,
   eachDayOfInterval,
@@ -19,16 +20,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Edit2,
-  Trash2,
+  ExternalLink,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getCalendar } from "@/features/calendar/api"
 import type { CalendarEntry, CalendarEntryType } from "@/features/calendar/types"
-import { HrScheduleDialog, type HrScheduleItem } from "@/features/calendar/HrScheduleDialog"
-import { toast } from "sonner"
+import { NewEventDialog } from "@/features/calendar/NewEventDialog"
+import { useAuth } from "@/features/auth/AuthContext"
 
 const typeDot: Record<CalendarEntryType, string> = {
   meeting: "bg-purple-500",
@@ -51,106 +51,45 @@ const typeChip: Record<CalendarEntryType, string> = {
 }
 
 const typeLabel: Record<CalendarEntryType, string> = {
-  event: "Consultation",
-  leave: "Blocked Time",
-  task_due: "Follow-up",
   meeting: "Meeting",
-  holiday: "Reminder",
+  event: "Event",
+  leave: "Leave",
+  task_due: "Task",
+  holiday: "Holiday",
   project_deadline: "Deadline",
   birthday: "Birthday",
 }
 
 export function ScheduleWidget() {
-  const queryClient = useQueryClient()
-  const [month, setMonth] = useState(new Date(2026, 8, 1)) // Sep 2026 default
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date(2026, 8, 9))
+  const { user } = useAuth()
+  const isManager =
+    user?.role === "founder" ||
+    user?.role === "company_admin" ||
+    user?.role === "hr_admin" ||
+    user?.role === "project_manager" ||
+    user?.role === "team_lead"
 
-  const [hrModalOpen, setHrModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<HrScheduleItem | null>(null)
-  const [localEvents, setLocalEvents] = useState<HrScheduleItem[]>([
-    {
-      id: "ev-1",
-      title: "Consultation: Patient Review",
-      date: "2026-09-09",
-      type: "event",
-      timeSlot: "10:30 AM - 11:30 AM",
-      assignee: "Dr. Taraka Nadh Nanduri",
-    },
-    {
-      id: "ev-2",
-      title: "Shift Review & Standup",
-      date: "2026-09-09",
-      type: "meeting",
-      timeSlot: "02:00 PM - 03:00 PM",
-      assignee: "Ganesh Kumar",
-    },
-  ])
+  const [month, setMonth] = useState(() => new Date())
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
+  const [newEventOpen, setNewEventOpen] = useState(false)
 
   const { data: entries } = useQuery({
-    queryKey: ["calendar", "dashboard-grid", month.getFullYear(), month.getMonth() + 1],
+    queryKey: ["calendar", month.getFullYear(), month.getMonth() + 1],
     queryFn: () => getCalendar(month.getFullYear(), month.getMonth() + 1),
   })
-
-  // Merge server and local events
-  const mergedEntries = useMemo(() => {
-    const list: CalendarEntry[] = [...(entries || [])]
-    for (const ev of localEvents) {
-      if (!list.some((s) => s.title === ev.title && s.date === ev.date)) {
-        list.push({
-          date: ev.date,
-          type: ev.type,
-          title: ev.title,
-        })
-      }
-    }
-    return list
-  }, [entries, localEvents])
 
   const gridStart = startOfWeek(startOfMonth(month))
   const gridEnd = endOfWeek(endOfMonth(month))
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
 
   const entriesByDay = (day: Date): CalendarEntry[] =>
-    mergedEntries.filter((e) => isSameDay(new Date(e.date), day))
+    (entries || []).filter((e) => isSameDay(new Date(e.date), day))
 
-  const selectedEntries = useMemo(() => {
-    const dateStr = format(selectedDate, "yyyy-MM-dd")
-    const locals = localEvents.filter((e) => e.date === dateStr)
-    const servers = (entries || [])
-      .filter((e) => isSameDay(new Date(e.date), selectedDate))
-      .filter((e) => !locals.some((l) => l.title === e.title))
-      .map((e) => ({
-        id: `srv-${e.date}-${e.title}`,
-        title: e.title,
-        date: dateStr,
-        type: e.type,
-        timeSlot: "Scheduled Event",
-        assignee: "Team Member",
-      }))
-    return [...locals, ...servers]
-  }, [selectedDate, localEvents, entries])
-
-  const handleSaveHrSchedule = (item: HrScheduleItem) => {
-    setLocalEvents((prev) => {
-      const idx = prev.findIndex((p) => p.id === item.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = item
-        return next
-      }
-      return [item, ...prev]
-    })
-    queryClient.invalidateQueries({ queryKey: ["calendar"] })
-  }
-
-  const handleDeleteHrSchedule = (id: number | string) => {
-    setLocalEvents((prev) => prev.filter((p) => p.id !== id))
-    toast.success("Schedule item removed")
-  }
+  const selectedEntries = entriesByDay(selectedDate)
 
   return (
     <Card className="overflow-hidden rounded-xl border shadow-sm bg-card">
-      {/* Calendar Header with Navigation & HR Update button */}
+      {/* Calendar Header with Navigation & Event Action */}
       <CardHeader className="flex flex-row items-center justify-between border-b bg-card px-4 py-3">
         <div className="flex items-center gap-2">
           <CalendarDays className="size-4 text-primary" />
@@ -158,17 +97,28 @@ export function ScheduleWidget() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isManager && (
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-2.5"
+              onClick={() => setNewEventOpen(true)}
+            >
+              <Plus className="mr-1 size-3.5" />
+              New Event
+            </Button>
+          )}
+
           <Button
-            size="sm"
-            variant="default"
-            className="h-7 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-2.5"
-            onClick={() => {
-              setEditingItem(null)
-              setHrModalOpen(true)
-            }}
+            asChild
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-md"
+            title="Open Full Calendar"
           >
-            <Plus className="mr-1 size-3.5" />
-            HR Update
+            <Link to="/calendar">
+              <ExternalLink className="size-3.5" />
+            </Link>
           </Button>
 
           <div className="flex items-center gap-1">
@@ -207,7 +157,7 @@ export function ScheduleWidget() {
           ))}
         </div>
 
-        {/* 7-Day Month Grid */}
+        {/* 7-Day Month Grid matching calendar template */}
         <div className="grid grid-cols-7 divide-x divide-y border-b bg-card">
           {days.map((day) => {
             const dayEntries = entriesByDay(day)
@@ -222,8 +172,7 @@ export function ScheduleWidget() {
                 onClick={() => setSelectedDate(day)}
                 onDoubleClick={() => {
                   setSelectedDate(day)
-                  setEditingItem(null)
-                  setHrModalOpen(true)
+                  if (isManager) setNewEventOpen(true)
                 }}
                 className={`group relative flex min-h-[56px] sm:min-h-[64px] flex-col p-1.5 text-left transition-colors hover:bg-muted/50 ${
                   !currentMonth ? "bg-muted/15 text-muted-foreground/35" : "text-foreground"
@@ -232,7 +181,7 @@ export function ScheduleWidget() {
                     ? "z-10 ring-2 ring-inset ring-blue-500 border-l-2 border-l-blue-600 bg-blue-50/20 dark:bg-blue-950/20"
                     : ""
                 }`}
-                title="Click to select, double-click for HR Update"
+                title="Click to select date"
               >
                 <div className="flex w-full items-center justify-between">
                   <span
@@ -275,52 +224,55 @@ export function ScheduleWidget() {
           })}
         </div>
 
-        {/* Category Legend matching reference */}
+        {/* HRMS Category Legend */}
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-b bg-card px-4 py-2 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1 font-medium">
-            <span className="size-2 rounded-full bg-emerald-500" />
-            Consultations
-          </span>
-          <span className="flex items-center gap-1 font-medium">
-            <span className="size-2 rounded-full bg-rose-500" />
-            Blocked Time
-          </span>
-          <span className="flex items-center gap-1 font-medium">
-            <span className="size-2 rounded-full bg-sky-500" />
-            Follow-ups
-          </span>
           <span className="flex items-center gap-1 font-medium">
             <span className="size-2 rounded-full bg-purple-500" />
             Meetings
           </span>
           <span className="flex items-center gap-1 font-medium">
+            <span className="size-2 rounded-full bg-emerald-500" />
+            Events
+          </span>
+          <span className="flex items-center gap-1 font-medium">
+            <span className="size-2 rounded-full bg-rose-500" />
+            Leaves
+          </span>
+          <span className="flex items-center gap-1 font-medium">
+            <span className="size-2 rounded-full bg-sky-500" />
+            Tasks
+          </span>
+          <span className="flex items-center gap-1 font-medium">
             <span className="size-2 rounded-full bg-indigo-500" />
-            Reminders
+            Holidays
+          </span>
+          <span className="flex items-center gap-1 font-medium">
+            <span className="size-2 rounded-full bg-amber-500" />
+            Deadlines
           </span>
         </div>
 
-        {/* Selected date quick summary with HR Update actions */}
+        {/* Selected date quick summary */}
         <div className="p-3.5">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-foreground">
               {format(selectedDate, "EEEE, MMMM d, yyyy")}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 rounded-md text-[10px] px-2"
-              onClick={() => {
-                setEditingItem(null)
-                setHrModalOpen(true)
-              }}
-            >
-              <Plus className="mr-1 size-3" />
-              Add Item
-            </Button>
+            {isManager && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 rounded-md text-[10px] px-2"
+                onClick={() => setNewEventOpen(true)}
+              >
+                <Plus className="mr-1 size-3" />
+                Add Event
+              </Button>
+            )}
           </div>
 
           {selectedEntries.length === 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">No events on this day. Click "+ Add Item" to schedule.</p>
+            <p className="mt-1 text-xs text-muted-foreground">No events on this day.</p>
           ) : (
             <div className="mt-2 flex flex-col gap-1.5">
               {selectedEntries.map((e, i) => (
@@ -330,41 +282,12 @@ export function ScheduleWidget() {
                 >
                   <div className="flex items-center gap-2">
                     <span className={`size-2 rounded-full ${typeDot[e.type]}`} />
-                    <div>
-                      <span className="font-medium text-foreground">{e.title}</span>
-                      {e.timeSlot && <span className="ml-1.5 text-[10px] text-muted-foreground">({e.timeSlot})</span>}
-                    </div>
+                    <span className="font-medium text-foreground">{e.title}</span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className={`text-[10px] ${typeChip[e.type]}`}>
-                      {typeLabel[e.type] || e.type}
-                    </Badge>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingItem({
-                          id: e.id,
-                          title: e.title,
-                          date: e.date,
-                          type: e.type,
-                          timeSlot: e.timeSlot,
-                          assignee: e.assignee,
-                        })
-                        setHrModalOpen(true)
-                      }}
-                      className="p-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <Edit2 className="size-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteHrSchedule(e.id || "")}
-                      className="p-0.5 text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
-                  </div>
+                  <Badge variant="outline" className={`text-[10px] ${typeChip[e.type]}`}>
+                    {typeLabel[e.type] || e.type}
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -372,13 +295,10 @@ export function ScheduleWidget() {
         </div>
       </CardContent>
 
-      <HrScheduleDialog
-        open={hrModalOpen}
-        onOpenChange={setHrModalOpen}
+      <NewEventDialog
+        open={newEventOpen}
+        onOpenChange={setNewEventOpen}
         defaultDate={format(selectedDate, "yyyy-MM-dd")}
-        editingItem={editingItem}
-        onSave={handleSaveHrSchedule}
-        onDelete={handleDeleteHrSchedule}
       />
     </Card>
   )
