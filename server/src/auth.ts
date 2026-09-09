@@ -177,8 +177,9 @@ export function isTokenRevoked(jti?: string): boolean {
 
 export function extractTokenFromRequest(req: Request): string | null {
   const header = req.headers.authorization
-  if (!header?.startsWith("Bearer ")) return null
-  return header.slice("Bearer ".length)
+  if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length)
+  if (typeof req.query?.token === "string" && req.query.token) return req.query.token
+  return null
 }
 
 export function revokeRequestToken(req: Request): void {

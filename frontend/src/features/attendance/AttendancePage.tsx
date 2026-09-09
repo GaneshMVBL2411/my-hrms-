@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { LogIn, LogOut, Clock } from "lucide-react"
+import { LogIn, LogOut, Clock, Camera, MapPin, ExternalLink } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { checkIn, checkOut, getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
 import { BiometricPunch } from "@/features/attendance/BiometricPunch"
 import { useAuth } from "@/features/auth/AuthContext"
@@ -27,12 +28,113 @@ function formatTime(value: string | null) {
   return value ? format(new Date(value), "hh:mm a") : "—"
 }
 
+function getPhotoUrl(photoId: string | null | undefined): string | null {
+  if (!photoId) return null
+  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001"
+  const token = sessionStorage.getItem("hrms_token") ?? localStorage.getItem("hrms_token")
+  return `${apiUrl}/files/${photoId}?token=${encodeURIComponent(token ?? "")}`
+}
+
+function PhotoCell({
+  photoId,
+  name,
+  time,
+  lat,
+  lng,
+  onOpen,
+}: {
+  photoId: string | null | undefined
+  name: string
+  time: string | null
+  lat?: number | null
+  lng?: number | null
+  onOpen: (info: { url: string; title: string; subtitle?: string; location?: string }) => void
+}) {
+  const url = getPhotoUrl(photoId)
+  if (!url) {
+    return (
+      <div className="flex items-center gap-1.5 text-muted-foreground/60">
+        <Camera className="size-3.5" />
+        <span className="text-xs">—</span>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onOpen({
+          url,
+          title: `${name} — Biometric Check In`,
+          subtitle: time ? `Time: ${time}` : undefined,
+          location: lat && lng ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : undefined,
+        })
+      }
+      className="group relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-muted shadow-xs transition-transform hover:scale-110 hover:border-primary focus:outline-hidden focus:ring-2 focus:ring-ring"
+      title="Click to view biometric check-in selfie"
+    >
+      <img
+        src={url}
+        alt={name}
+        className="size-full object-cover"
+        loading="lazy"
+        onError={(e) => {
+          (e.target as HTMLElement).style.display = "none"
+        }}
+      />
+      <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+        <Camera className="size-3 text-white" />
+      </div>
+    </button>
+  )
+}
+
+function LocationCell({
+  lat,
+  lng,
+  accuracy,
+}: {
+  lat?: number | null
+  lng?: number | null
+  accuracy?: number | null
+}) {
+  if (lat == null || lng == null) {
+    return <span className="text-muted-foreground">—</span>
+  }
+
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+
+  return (
+    <a
+      href={mapsUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+      title={`Open in Google Maps (${lat}, ${lng})`}
+    >
+      <MapPin className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+      <span className="font-mono text-[11px]">{lat.toFixed(4)}, {lng.toFixed(4)}</span>
+      {accuracy != null && (
+        <span className="text-[10px] text-muted-foreground">(±{Math.round(accuracy)}m)</span>
+      )}
+      <ExternalLink className="size-2.5 opacity-60 ml-0.5" />
+    </a>
+  )
+}
+
 export function AttendancePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const now = new Date()
   const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [teamDate, setTeamDate] = useState(format(now, "yyyy-MM-dd"))
+  const [previewPhoto, setPreviewPhoto] = useState<{
+    url: string
+    title: string
+    subtitle?: string
+    location?: string
+  } | null>(null)
 
   const { data: myAttendance, isLoading: loadingMine } = useQuery({
     queryKey: ["attendance", "me", now.getFullYear(), now.getMonth() + 1],
@@ -128,7 +230,9 @@ export function AttendancePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
+                  <TableHead>Photo</TableHead>
                   <TableHead>Check In</TableHead>
+                  <TableHead>Login Place</TableHead>
                   <TableHead>Check Out</TableHead>
                   <TableHead>Working Hours</TableHead>
                   <TableHead>Status</TableHead>
@@ -137,14 +241,14 @@ export function AttendancePage() {
               <TableBody>
                 {loadingMine && (
                   <TableRow>
-                    <TableCell colSpan={5}>
+                    <TableCell colSpan={7}>
                       <Skeleton className="h-8 w-full rounded-md" />
                     </TableCell>
                   </TableRow>
                 )}
                 {!loadingMine && (myAttendance?.length ?? 0) === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                       No attendance records yet this month.
                     </TableCell>
                   </TableRow>
@@ -155,7 +259,24 @@ export function AttendancePage() {
                   .map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{r.date}</TableCell>
+                      <TableCell>
+                        <PhotoCell
+                          photoId={r.checkInPhotoId}
+                          name={user?.email?.split("@")[0] || "Me"}
+                          time={formatTime(r.checkIn)}
+                          lat={r.checkInLatitude}
+                          lng={r.checkInLongitude}
+                          onOpen={setPreviewPhoto}
+                        />
+                      </TableCell>
                       <TableCell>{formatTime(r.checkIn)}</TableCell>
+                      <TableCell>
+                        <LocationCell
+                          lat={r.checkInLatitude}
+                          lng={r.checkInLongitude}
+                          accuracy={r.checkInAccuracyM}
+                        />
+                      </TableCell>
                       <TableCell>{formatTime(r.checkOut)}</TableCell>
                       <TableCell>{r.workingHours != null ? `${r.workingHours} hrs` : "—"}</TableCell>
                       <TableCell>
@@ -204,7 +325,9 @@ export function AttendancePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee</TableHead>
+                    <TableHead>Photo</TableHead>
                     <TableHead>Check In</TableHead>
+                    <TableHead>Login Place</TableHead>
                     <TableHead>Check Out</TableHead>
                     <TableHead>Working Hours</TableHead>
                     <TableHead>Status</TableHead>
@@ -213,22 +336,39 @@ export function AttendancePage() {
                 <TableBody>
                   {loadingTeam && (
                     <TableRow>
-                      <TableCell colSpan={5}>
+                      <TableCell colSpan={7}>
                         <Skeleton className="h-8 w-full rounded-md" />
                       </TableCell>
                     </TableRow>
                   )}
                   {!loadingTeam && (teamData?.items.length ?? 0) === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                         No one has checked in for this date yet.
                       </TableCell>
                     </TableRow>
                   )}
                   {teamData?.items.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell>{r.employeeName}</TableCell>
+                      <TableCell className="font-medium">{r.employeeName}</TableCell>
+                      <TableCell>
+                        <PhotoCell
+                          photoId={r.checkInPhotoId}
+                          name={r.employeeName}
+                          time={formatTime(r.checkIn)}
+                          lat={r.checkInLatitude}
+                          lng={r.checkInLongitude}
+                          onOpen={setPreviewPhoto}
+                        />
+                      </TableCell>
                       <TableCell>{formatTime(r.checkIn)}</TableCell>
+                      <TableCell>
+                        <LocationCell
+                          lat={r.checkInLatitude}
+                          lng={r.checkInLongitude}
+                          accuracy={r.checkInAccuracyM}
+                        />
+                      </TableCell>
                       <TableCell>{formatTime(r.checkOut)}</TableCell>
                       <TableCell>{r.workingHours != null ? `${r.workingHours} hrs` : "—"}</TableCell>
                       <TableCell>
@@ -244,6 +384,45 @@ export function AttendancePage() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Selfie Photo Preview Dialog */}
+      {previewPhoto && (
+        <Dialog open onOpenChange={(open) => !open && setPreviewPhoto(null)}>
+          <DialogContent className="max-w-md rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold">{previewPhoto.title}</DialogTitle>
+              {previewPhoto.subtitle && (
+                <p className="text-xs text-muted-foreground">{previewPhoto.subtitle}</p>
+              )}
+            </DialogHeader>
+            <div className="relative mt-2 overflow-hidden rounded-xl border border-border bg-black/5 aspect-square">
+              <img
+                src={previewPhoto.url}
+                alt="Check-in Photo"
+                className="size-full object-cover"
+              />
+            </div>
+            {previewPhoto.location && (
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/50 p-2.5 text-xs">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="size-3.5 text-emerald-500 shrink-0" />
+                  <span>
+                    Login Place: <b className="text-foreground font-mono">{previewPhoto.location}</b>
+                  </span>
+                </div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${previewPhoto.location}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary hover:underline flex items-center gap-1 shrink-0"
+                >
+                  Map <ExternalLink className="size-3" />
+                </a>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

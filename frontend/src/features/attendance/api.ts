@@ -5,7 +5,7 @@ import { pageRange } from "@/lib/query"
 import type { AttendanceRecord, AttendanceSummary, PaginatedAttendance } from "@/features/attendance/types"
 
 const COLUMNS =
-  "id, employee_id, employee_name, date, check_in, check_out, break_minutes, status, working_hours, is_late"
+  "id, employee_id, employee_name, date, check_in, check_out, break_minutes, status, working_hours, is_late, check_in_photo_id, check_out_photo_id, check_in_latitude, check_in_longitude, check_in_accuracy_m, check_out_latitude, check_out_longitude, check_out_accuracy_m"
 
 export async function getAttendanceRecord(id: number): Promise<AttendanceRecord> {
   return unwrap<AttendanceRecord>(

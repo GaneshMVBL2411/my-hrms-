@@ -498,15 +498,23 @@ export function GenerateLetterSheet({
             <ActivityIndicator style={{ marginTop: scale(12) }} color={colors.accent} />
           ) : (
             <>
-              <TextInput
-                style={styles.input}
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search people"
-                placeholderTextColor={colors.faint}
-                autoCorrect={false}
-                maxFontSizeMultiplier={FONT_SCALE_CAP}
-              />
+              <View style={styles.searchWrap}>
+                <Ionicons name="search-outline" size={scale(18)} color={colors.muted} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search people"
+                  placeholderTextColor={colors.faint}
+                  autoCorrect={false}
+                  maxFontSizeMultiplier={FONT_SCALE_CAP}
+                />
+                {search.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearch("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={scale(18)} color={colors.faint} />
+                  </TouchableOpacity>
+                )}
+              </View>
               {/* Capped rather than scrolled inside a scroll view: nesting two
                   vertical scrollers makes both feel broken, and ten names is
                   enough to pick from once the search box has narrowed it. */}
@@ -707,6 +715,24 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     minHeight: scale(44),
     fontSize: scale(14),
     color: colors.text,
+  },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(8),
+    backgroundColor: colors.card,
+    borderRadius: scale(10),
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: scale(12),
+    marginTop: scale(6),
+    minHeight: scale(44),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: scale(14),
+    color: colors.text,
+    paddingVertical: scale(8),
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: scale(8), marginTop: scale(8) },
   chip: {

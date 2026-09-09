@@ -6,7 +6,9 @@ import {
   Alert,
   BackHandler,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -299,15 +301,23 @@ function SectionList({
         )}
       </View>
 
-      <TextInput
-        style={styles.search}
-        placeholder={`Search ${section.title.toLowerCase()}`}
-        placeholderTextColor={colors.faint}
-        value={search}
-        onChangeText={setSearch}
-        autoCorrect={false}
-        maxFontSizeMultiplier={FONT_SCALE_CAP}
-      />
+      <View style={styles.searchWrap}>
+        <Ionicons name="search-outline" size={scale(18)} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder={`Search ${section.title.toLowerCase()}`}
+          placeholderTextColor={colors.faint}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          maxFontSizeMultiplier={FONT_SCALE_CAP}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close-circle" size={scale(18)} color={colors.faint} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {rows === null ? (
         <ActivityIndicator style={{ marginTop: scale(28) }} color={colors.accent} />
@@ -548,10 +558,10 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        {/* Scrollable and height-capped: the window shrinks when the keyboard
-            opens, and a sheet taller than what is left had its lower fields —
-            the ones being typed into — clipped with no way to reach them. */}
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={styles.sheet}
@@ -613,7 +623,7 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -706,6 +716,25 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     minHeight: scale(44),
     fontSize: scale(14),
     color: colors.text,
+  },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(8),
+    backgroundColor: colors.card,
+    borderRadius: scale(10),
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: scale(12),
+    marginTop: scale(12),
+    marginBottom: scale(8),
+    minHeight: scale(44),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: scale(14),
+    color: colors.text,
+    paddingVertical: scale(8),
   },
   row: {
     flexDirection: "row",

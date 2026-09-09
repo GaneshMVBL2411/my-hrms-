@@ -128,6 +128,19 @@ export interface TodayRecord {
   check_in: string | null
   check_out: string | null
   status: string
+  check_in_photo_id?: string | null
+  check_out_photo_id?: string | null
+  check_in_latitude?: number | null
+  check_in_longitude?: number | null
+  check_in_accuracy_m?: number | null
+  check_out_latitude?: number | null
+  check_out_longitude?: number | null
+  check_out_accuracy_m?: number | null
+}
+
+export async function getFileUrl(photoId: string): Promise<string> {
+  const token = await getToken()
+  return `${API_URL}/files/${photoId}?token=${encodeURIComponent(token ?? "")}`
 }
 
 /** Today's row for the signed-in employee, or null before the first punch. */
@@ -157,7 +170,8 @@ export async function today(employeeId: number | null): Promise<TodayRecord | nu
     body: JSON.stringify({
       table: "attendance_detail",
       action: "select",
-      columns: "id, date, check_in, check_out, status",
+      columns:
+        "id, date, check_in, check_out, status, check_in_photo_id, check_out_photo_id, check_in_latitude, check_in_longitude, check_in_accuracy_m, check_out_latitude, check_out_longitude, check_out_accuracy_m",
       filters: [
         { column: "date", op: "eq", value: iso },
         { column: "employee_id", op: "eq", value: employeeId },

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Linking,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +19,7 @@ import * as Location from "expo-location"
 import {
   deviceChallenge,
   devicePunch,
+  getFileUrl,
   logout,
   registerDevice,
   today as fetchToday,
@@ -84,33 +89,41 @@ export function AttendanceScreen({
   const [busy, setBusy] = useState<null | "in" | "out" | "enrol">(null)
   const [permission, requestPermission] = useCameraPermissions()
   const cameraRef = useRef<CameraView | null>(null)
-  /**
-   * True only for the second or two between the fingerprint passing and the
-   * shutter. The camera is mounted off-screen for exactly that long.
-   */
-  const [capturing, setCapturing] = useState(false)
-  /** Resolved by onCameraReady, so the shot is not taken before there is one. */
-  const cameraReady = useRef<(() => void) | null>(null)
   const insets = useSafeAreaInsets()
 
+  // Verified punch & photo / location state
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [fullPhotoModal, setFullPhotoModal] = useState<{
+    url: string
+    time: string
+    location?: string
+  } | null>(null)
+
+  // Interactive Selfie & Login Location Modal state
+  const [verifyModal, setVerifyModal] = useState<{
+    visible: boolean
+    direction: "in" | "out"
+    signature: string
+  } | null>(null)
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null)
+  const [loginPlace, setLoginPlace] = useState<{
+    coords: PunchPlace | null
+    address: string
+  }>({ coords: null, address: "Detecting login place GPS..." })
+  const [submittingPunch, setSubmittingPunch] = useState(false)
+
   const refresh = useCallback(async () => {
-    setRecord(await fetchToday(user.employeeId).catch(() => null))
-    // Depends on who is signed in: an empty list would keep querying for the
-    // account that was here before this one.
+    const todayRec = await fetchToday(user.employeeId).catch(() => null)
+    setRecord(todayRec)
+    if (todayRec?.check_in_photo_id) {
+      getFileUrl(todayRec.check_in_photo_id).then(setPhotoPreviewUrl).catch(() => null)
+    } else {
+      setPhotoPreviewUrl(null)
+    }
   }, [user.employeeId])
 
   /**
    * Re-read whenever this tab comes to the front, not only on mount.
-   *
-   * The screen is mounted once and then sits behind the others for the rest of
-   * the session, so a punch made anywhere else — the web portal, or the phone
-   * left open since yesterday — never reached it, and someone who had already
-   * checked in was still shown a live Check in button.
-   *
-   * The biometric and enrolment checks are re-run for the same reason: the fix
-   * for "Set a screen lock on your phone first" happens in the phone's own
-   * settings, and coming back to a screen still showing the complaint is what
-   * makes it look like the fix did not work.
    */
   useEffect(() => {
     if (!active) return
@@ -127,9 +140,6 @@ export function AttendanceScreen({
       setEnrolled(true)
       Alert.alert("Ready", "This phone can now check you in and out.")
     } catch (e) {
-      // A key was very likely written before the server call failed; clearing it
-      // means "Set up" starts clean next time instead of signing with a key the
-      // server has never seen, which fails in a far more confusing way.
       await forgetDeviceKey(user.id)
       const message = (e as Error).message || "Could not set up this device"
       if (message.toLowerCase().includes("not authenticated") || message.toLowerCase().includes("session")) {
@@ -147,65 +157,13 @@ export function AttendanceScreen({
   }
 
   /**
-   * Takes the attendance photo, and only at the moment it is needed.
-   *
-   * The camera used to sit on this screen as a live preview from the moment
-   * the tab was opened. Someone arriving to press a button was met by their
-   * own face instead, which is both alarming and the wrong order: the
-   * fingerprint is what authorises a punch, and the photo is evidence
-   * attached to one that has already been authorised.
-   *
-   * So it is mounted off-screen for the second or two it takes to expose a
-   * frame, and unmounted again. Off-screen rather than at zero opacity —
-   * some devices decline to produce frames for a view they consider
-   * invisible, and a photo that silently never arrives is worse than none.
-   */
-  async function capturePhoto(): Promise<string | null> {
-    if (!permission?.granted) return null
-    setCapturing(true)
-    try {
-      // The state change above mounts the camera; this waits for it to say it
-      // can actually see. The timeout is the fallback for a device that never
-      // fires the callback — a punch must not hang on its photo.
-      await new Promise<void>((resolve) => {
-        cameraReady.current = resolve
-        setTimeout(resolve, 2500)
-      })
-      const shot = await cameraRef.current
-        ?.takePictureAsync({ base64: true, quality: 0.5, imageType: "jpg" })
-        .catch(() => null)
-      return shot?.base64 ? `data:image/jpeg;base64,${shot.base64}` : null
-    } finally {
-      cameraReady.current = null
-      setCapturing(false)
-    }
-  }
-
-  /**
    * Where this punch is being made from, if the person allows it.
-   *
-   * Asked for at the moment of the punch rather than when the tab opens: a
-   * permission prompt that arrives while someone is reading their hours is
-   * unexplained, and one that arrives as they check in explains itself.
-   *
-   * Refusal is a normal outcome and returns null. The signature is what
-   * authorises attendance, so a punch without coordinates is still a punch —
-   * the alternative, refusing to record someone's day because they declined a
-   * location prompt, would make this feature a way to lose attendance.
-   *
-   * Balanced accuracy, not the highest: the question is which building
-   * somebody is at, and asking for the best possible fix costs several seconds
-   * of GPS settling for precision nobody reads.
    */
   async function capturePlace(): Promise<PunchPlace | null> {
     try {
       const { granted } = await Location.requestForegroundPermissionsAsync()
       if (!granted) return null
 
-      // A cold GPS fix can take the better part of ten seconds, and a punch
-      // that sits there while it settles feels broken. Whatever the phone
-      // already has is used when it is recent enough to still describe where
-      // someone is standing; only a stale or missing one waits for a new fix.
       const known = await Location.getLastKnownPositionAsync({ maxAge: 60_000 })
       const reading =
         known ??
@@ -221,8 +179,6 @@ export function AttendanceScreen({
         accuracy: reading.coords.accuracy ?? null,
       }
     } catch {
-      // No fix indoors, location services off, a timeout. None of these are
-      // reasons to stop someone checking in.
       return null
     }
   }
@@ -230,39 +186,44 @@ export function AttendanceScreen({
   async function punch(direction: "in" | "out") {
     setBusy(direction)
     try {
-      // Started before the fingerprint prompt and collected after it. The fix
-      // arrives while someone's finger is on the sensor instead of afterwards,
-      // which is the difference between a punch that responds and one that
-      // appears to hang.
-      //
-      // Running it early does not make it part of what authorises the punch:
-      // a location is not evidence of identity, it is attached to a signature
-      // that has already been checked, and if the signature fails the reading
-      // is discarded with everything else.
-      const placePromise = capturePlace()
-
+      // 1. Biometric Authentication first
       const challenge = await deviceChallenge()
       const signature = await signChallenge(challenge, user.id)
 
-      // Only now, with the biometric already passed.
-      const photo = await capturePhoto()
-      const place = await placePromise
+      // 2. Biometric passed! Prompt camera and location permissions
+      if (!permission?.granted) {
+        await requestPermission()
+      }
+      await Location.requestForegroundPermissionsAsync().catch(() => null)
 
-      // The server's own answer, not the fact that a photo was sent: it drops
-      // anything over 2MB and still records the punch, so trusting the local
-      // variable here would report a photo saved that never was.
-      const { photoStored, locationStored } = await devicePunch(direction, signature, photo, place)
-      await refresh()
-      // Says what was actually recorded rather than what was attempted, so
-      // someone who declined a permission is told, not quietly assumed.
-      const kept = [photoStored ? "photo" : null, locationStored ? "location" : null].filter(Boolean)
-      Alert.alert(
-        direction === "in" ? "Checked in" : "Checked out",
-        kept.length ? `Verified, with ${kept.join(" and ")}` : "Verified"
-      )
+      // 3. Launch the Selfie & Login Place verification screen
+      setCapturedPhoto(null)
+      setLoginPlace({ coords: null, address: "Detecting login place GPS..." })
+      setVerifyModal({ visible: true, direction, signature })
+
+      // 4. Resolve exact coordinates and place name in background
+      capturePlace().then(async (coords) => {
+        if (coords) {
+          try {
+            const geo = await Location.reverseGeocodeAsync({
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            })
+            const first = geo[0]
+            const parts = first
+              ? [first.street || first.name, first.district || first.subregion || first.city, first.region].filter(Boolean)
+              : []
+            const addr = parts.length > 0 ? parts.join(", ") : `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`
+            setLoginPlace({ coords, address: addr })
+          } catch {
+            setLoginPlace({ coords, address: `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}` })
+          }
+        } else {
+          setLoginPlace({ coords: null, address: "Location fix unavailable" })
+        }
+      })
     } catch (e) {
       const message = (e as Error).message || ""
-      // A dismissed prompt is a decision, not a failure worth alarming someone about.
       if (/cancel|user_cancel|authentication|UserFallback/i.test(message) && !/expired/i.test(message)) {
         return
       }
@@ -277,6 +238,34 @@ export function AttendanceScreen({
       Alert.alert("Not recorded", message || "Biometric check failed")
     } finally {
       setBusy(null)
+    }
+  }
+
+  async function handleConfirmPunch() {
+    if (!verifyModal) return
+    setSubmittingPunch(true)
+    try {
+      const { photoStored, locationStored } = await devicePunch(
+        verifyModal.direction,
+        verifyModal.signature,
+        capturedPhoto,
+        loginPlace.coords
+      )
+      await refresh()
+      const dir = verifyModal.direction
+      setVerifyModal(null)
+      setCapturedPhoto(null)
+      const kept = [photoStored ? "selfie photo" : null, locationStored ? "login place" : null].filter(Boolean)
+      Alert.alert(
+        dir === "in" ? "Checked In Successfully" : "Checked Out Successfully",
+        kept.length
+          ? `Biometric verified with ${kept.join(" and ")} recorded.`
+          : "Biometric attendance verified."
+      )
+    } catch (e) {
+      Alert.alert("Submission Failed", (e as Error).message || "Could not record punch")
+    } finally {
+      setSubmittingPunch(false)
     }
   }
 
@@ -325,9 +314,18 @@ export function AttendanceScreen({
       </View>
 
       <View style={styles.card}>
-        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.cardLabel}>
-          Today
-        </Text>
+        <View style={styles.cardHeaderRow}>
+          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.cardLabel}>
+            Today
+          </Text>
+          {checkedIn && (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={scale(13)} color="#00a884" />
+              <Text style={styles.verifiedBadgeText}>Biometric Verified</Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.times}>
           <View style={styles.timeCell}>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.timeLabel}>
@@ -345,7 +343,50 @@ export function AttendanceScreen({
               {formatTime(record?.check_out)}
             </Text>
           </View>
+
+          {photoPreviewUrl && (
+            <TouchableOpacity
+              style={styles.todayPhotoWrap}
+              onPress={() =>
+                setFullPhotoModal({
+                  url: photoPreviewUrl,
+                  time: formatTime(record?.check_in),
+                  location:
+                    record?.check_in_latitude && record?.check_in_longitude
+                      ? `${Number(record.check_in_latitude).toFixed(4)}, ${Number(record.check_in_longitude).toFixed(4)}`
+                      : undefined,
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: photoPreviewUrl }} style={styles.todayPhotoThumb} />
+              <View style={styles.todayPhotoOverlay}>
+                <Ionicons name="camera" size={scale(11)} color="#ffffff" />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
+
+        {checkedIn && record?.check_in_latitude && record?.check_in_longitude && (
+          <View style={styles.todayLocationSection}>
+            <View style={styles.todayLocationRow}>
+              <Ionicons name="location" size={scale(14)} color="#10b981" />
+              <Text numberOfLines={1} style={styles.todayLocationText}>
+                Login Place: {Number(record.check_in_latitude).toFixed(4)}, {Number(record.check_in_longitude).toFixed(4)}
+                {record.check_in_accuracy_m != null ? ` (±${Math.round(Number(record.check_in_accuracy_m))}m)` : ""}
+              </Text>
+              <TouchableOpacity
+                onPress={() =>
+                  Linking.openURL(
+                    `https://www.google.com/maps/search/?api=1&query=${record.check_in_latitude},${record.check_in_longitude}`
+                  )
+                }
+              >
+                <Text style={styles.mapLink}>View Map ↗</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
 
       {blocked ? (
@@ -366,31 +407,9 @@ export function AttendanceScreen({
         </TouchableOpacity>
       ) : enrolled === true ? (
         <>
-          {/* No preview. A line saying what will happen is enough, and is
-              honest about the photo without pointing a live camera at
-              someone who came here to press a button. */}
-          {settled ? null : permission?.granted ? (
-            <View style={styles.cameraNote}>
-              <Ionicons name="camera-outline" size={scale(17)} color={colors.muted} />
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.cameraNoteText}>
-                A photo and your location are recorded once your fingerprint is
-                confirmed, so the record shows where you marked attendance.
-              </Text>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.subtle} onPress={requestPermission}>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.subtleText}>
-                Allow the camera to attach a photo to each punch (optional)
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Two greyed-out buttons say "this screen is broken" rather than
-              "your day is recorded". Once both punches are in, the controls
-              are replaced by the thing someone actually came to check. */}
           {settled ? (
             <View style={styles.settled}>
-              <Ionicons name="checkmark-circle" size={scale(30)} color={colors.accent} />
+              <Ionicons name="checkmark-circle" size={scale(30)} color="#00a884" />
               <View style={{ flex: 1 }}>
                 <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.settledTitle}>
                   That is today recorded
@@ -411,9 +430,12 @@ export function AttendanceScreen({
                 {busy === "in" ? (
                   <ActivityIndicator color={colors.onFill} />
                 ) : (
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
-                    {checkedIn ? `Checked in at ${formatTime(record?.check_in)}` : "Check in"}
-                  </Text>
+                  <View style={styles.btnRow}>
+                    <Ionicons name="finger-print" size={scale(20)} color={colors.onFill} />
+                    <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.primaryText}>
+                      {checkedIn ? `Checked in at ${formatTime(record?.check_in)}` : "Check In with Biometric"}
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
 
@@ -425,33 +447,191 @@ export function AttendanceScreen({
                 {busy === "out" ? (
                   <ActivityIndicator color={colors.accent} />
                 ) : (
-                  <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.secondaryText}>
-                    Check out
-                  </Text>
+                  <View style={styles.btnRow}>
+                    <Ionicons name="log-out-outline" size={scale(19)} color={colors.accent} />
+                    <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.secondaryText}>
+                      Check Out
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </>
           )}
 
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.note}>
-            Your face and fingerprint stay on this phone. It signs the check-in; the
-            server only ever sees the signature.
+            Your biometric signs the check-in; after signing, you take a verification selfie and your login place GPS is securely recorded for HR verification.
           </Text>
         </>
       ) : (
         <ActivityIndicator style={{ marginTop: scale(24) }} color={colors.accent} />
       )}
 
-      {/* Off the top of the screen, and only while a shot is being taken. */}
-      {capturing && (
-        <View style={styles.captureHost} pointerEvents="none">
-          <CameraView
-            ref={cameraRef}
-            style={StyleSheet.absoluteFill}
-            facing="front"
-            onCameraReady={() => cameraReady.current?.()}
-          />
-        </View>
+      {/* Interactive Selfie & Login Location Verification Modal */}
+      {verifyModal && (
+        <Modal
+          visible
+          animationType="slide"
+          onRequestClose={() => {
+            if (!submittingPunch) setVerifyModal(null)
+          }}
+        >
+          <View style={[styles.modalRoot, { paddingTop: insets.top + scale(10), paddingBottom: insets.bottom + scale(14) }]}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                onPress={() => setVerifyModal(null)}
+                disabled={submittingPunch}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={scale(22)} color={colors.text} />
+              </TouchableOpacity>
+              <View style={{ flex: 1, alignItems: "center" }}>
+                <Text style={styles.modalTitle}>
+                  {verifyModal.direction === "in" ? "Check In Verification" : "Check Out Verification"}
+                </Text>
+                <Text style={styles.modalSubTitle}>Biometric confirmed · Take attendance picture</Text>
+              </View>
+              <View style={{ width: scale(36) }} />
+            </View>
+
+            {/* Login Place GPS Banner */}
+            <View style={styles.modalPlaceCard}>
+              <View style={styles.modalPlaceDot} />
+              <Ionicons name="location-sharp" size={scale(18)} color="#10b981" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalPlaceLabel}>LOGIN PLACE GPS</Text>
+                <Text numberOfLines={1} style={styles.modalPlaceAddress}>
+                  {loginPlace.address}
+                  {loginPlace.coords?.accuracy != null ? ` (±${Math.round(loginPlace.coords.accuracy)}m)` : ""}
+                </Text>
+              </View>
+            </View>
+
+            {/* Camera Viewport / Captured Image Preview */}
+            <View style={styles.cameraContainer}>
+              {!capturedPhoto ? (
+                permission?.granted ? (
+                  <View style={styles.cameraFrame}>
+                    <CameraView
+                      ref={cameraRef}
+                      facing="front"
+                      style={StyleSheet.absoluteFill}
+                    />
+                    {/* Face Guide Oval */}
+                    <View pointerEvents="none" style={styles.faceOval} />
+                    <View style={styles.cameraFaceHintWrap}>
+                      <Text style={styles.cameraFaceHint}>Position your face in the oval</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.cameraPermissionDenied}>
+                    <Ionicons name="camera-outline" size={scale(48)} color={colors.muted} />
+                    <Text style={styles.cameraDeniedText}>
+                      Camera access is required to take your biometric attendance selfie photo.
+                    </Text>
+                    <TouchableOpacity style={styles.grantBtn} onPress={requestPermission}>
+                      <Text style={styles.grantBtnText}>Grant Camera Permission</Text>
+                    </TouchableOpacity>
+                  </View>
+                )
+              ) : (
+                <View style={styles.cameraFrame}>
+                  <Image source={{ uri: capturedPhoto }} style={StyleSheet.absoluteFill} />
+                  <View style={styles.capturedBadge}>
+                    <Ionicons name="checkmark-circle" size={scale(18)} color="#10b981" />
+                    <Text style={styles.capturedBadgeText}>Photo Captured</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Bottom Controls */}
+            <View style={styles.modalBottomBar}>
+              {!capturedPhoto ? (
+                <View style={styles.shutterRow}>
+                  <TouchableOpacity
+                    style={styles.shutterBtn}
+                    onPress={async () => {
+                      if (!permission?.granted) {
+                        await requestPermission()
+                        return
+                      }
+                      const shot = await cameraRef.current
+                        ?.takePictureAsync({ base64: true, quality: 0.5, imageType: "jpg" })
+                        .catch(() => null)
+                      if (shot?.base64) {
+                        setCapturedPhoto(`data:image/jpeg;base64,${shot.base64}`)
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.shutterInner} />
+                  </TouchableOpacity>
+                  <Text style={styles.shutterLabel}>Tap button to take picture</Text>
+                </View>
+              ) : (
+                <View style={styles.confirmRow}>
+                  <TouchableOpacity
+                    style={styles.retakeBtn}
+                    onPress={() => setCapturedPhoto(null)}
+                    disabled={submittingPunch}
+                  >
+                    <Ionicons name="refresh" size={scale(18)} color={colors.text} />
+                    <Text style={styles.retakeBtnText}>Retake</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.confirmPunchBtn}
+                    onPress={handleConfirmPunch}
+                    disabled={submittingPunch}
+                  >
+                    {submittingPunch ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark" size={scale(19)} color="#ffffff" />
+                        <Text style={styles.confirmPunchBtnText}>Confirm & Submit</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Full Resolution Photo Modal */}
+      {fullPhotoModal && (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setFullPhotoModal(null)}
+        >
+          <Pressable style={styles.photoModalBackdrop} onPress={() => setFullPhotoModal(null)}>
+            <View style={styles.photoModalCard}>
+              <View style={styles.photoModalHeader}>
+                <View>
+                  <Text style={styles.photoModalTitle}>Check In Selfie</Text>
+                  <Text style={styles.photoModalSub}>Time: {fullPhotoModal.time}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setFullPhotoModal(null)} style={styles.photoModalClose}>
+                  <Ionicons name="close" size={scale(20)} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <Image source={{ uri: fullPhotoModal.url }} style={styles.photoModalImage} />
+
+              {fullPhotoModal.location && (
+                <View style={styles.photoModalLocRow}>
+                  <Ionicons name="location" size={scale(15)} color="#10b981" />
+                  <Text style={styles.photoModalLocText}>Login Place: {fullPhotoModal.location}</Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
       )}
     </ScrollView>
   )
@@ -484,43 +664,84 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     borderColor: colors.border,
     padding: scale(14),
   },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   cardLabel: { fontSize: scale(12), color: colors.muted },
-  times: { flexDirection: "row", marginTop: scale(8) },
-  // Equal halves rather than a fixed gap, so In and Out stay aligned on any width.
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(4),
+    backgroundColor: "rgba(0,168,132,0.1)",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(3),
+    borderRadius: scale(10),
+  },
+  verifiedBadgeText: {
+    fontSize: scale(11),
+    fontWeight: "600",
+    color: "#00a884",
+  },
+  times: { flexDirection: "row", marginTop: scale(8), alignItems: "center" },
   timeCell: { flex: 1 },
   timeLabel: { fontSize: scale(11), color: colors.faint },
   time: { fontSize: scale(20), fontWeight: "600", color: colors.text, marginTop: scale(2) },
-  // Aspect ratio rather than a fixed height: a square preview on every screen.
-  /**
-   * Where the shot is actually taken from: a real-sized camera, positioned
-   * off the top of the screen. Real-sized because some devices will not
-   * produce frames for a view of no size, and off-screen rather than
-   * transparent for the same reason.
-   */
-  captureHost: {
-    position: "absolute",
-    top: -scale(600),
-    left: 0,
-    width: scale(200),
-    height: scale(200),
+  todayPhotoWrap: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: colors.brand,
+    position: "relative",
   },
-  cameraNote: {
+  todayPhotoThumb: {
+    width: "100%",
+    height: "100%",
+  },
+  todayPhotoOverlay: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    left: 0,
+    height: scale(14),
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  todayLocationSection: {
+    marginTop: scale(10),
+    paddingTop: scale(8),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  todayLocationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scale(9),
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(11),
-    borderRadius: scale(10),
-    backgroundColor: colors.subtle,
+    gap: scale(6),
   },
-  cameraNoteText: { flex: 1, fontSize: scale(12), lineHeight: scale(17), color: colors.subtleText },
+  todayLocationText: {
+    flex: 1,
+    fontSize: scale(12),
+    color: colors.muted,
+  },
+  mapLink: {
+    fontSize: scale(12),
+    fontWeight: "600",
+    color: colors.accent,
+  },
+  btnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(8),
+  },
   primary: {
     backgroundColor: colors.brand,
     borderRadius: scale(12),
     paddingVertical: scale(15),
     alignItems: "center",
-    // A comfortable target on every phone, and the floor Android's own
-    // guidance puts on a tappable control.
     minHeight: scale(48),
     justifyContent: "center",
   },
@@ -558,5 +779,257 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     textAlign: "center",
     lineHeight: scale(16),
     marginTop: scale(2),
+  },
+
+  // Interactive Verification Modal
+  modalRoot: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingHorizontal: scale(16),
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: scale(8),
+  },
+  modalCloseBtn: {
+    padding: scale(6),
+  },
+  modalTitle: {
+    fontSize: scale(16),
+    fontWeight: "700",
+    color: colors.text,
+  },
+  modalSubTitle: {
+    fontSize: scale(11.5),
+    color: colors.muted,
+    marginTop: scale(1),
+  },
+  modalPlaceCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(8),
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: scale(12),
+    padding: scale(10),
+    marginVertical: scale(6),
+  },
+  modalPlaceDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    backgroundColor: "#10b981",
+  },
+  modalPlaceLabel: {
+    fontSize: scale(9.5),
+    fontWeight: "700",
+    color: "#10b981",
+    letterSpacing: 0.5,
+  },
+  modalPlaceAddress: {
+    fontSize: scale(12.5),
+    fontWeight: "600",
+    color: colors.text,
+    marginTop: scale(1),
+  },
+  cameraContainer: {
+    flex: 1,
+    borderRadius: scale(20),
+    overflow: "hidden",
+    backgroundColor: "#000000",
+    position: "relative",
+    marginVertical: scale(6),
+  },
+  cameraFrame: {
+    flex: 1,
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  faceOval: {
+    width: scale(200),
+    height: scale(250),
+    borderRadius: scale(100),
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.75)",
+    borderStyle: "dashed",
+    position: "absolute",
+  },
+  cameraFaceHintWrap: {
+    position: "absolute",
+    bottom: scale(14),
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: scale(14),
+    paddingVertical: scale(6),
+    borderRadius: scale(16),
+  },
+  cameraFaceHint: {
+    color: "#ffffff",
+    fontSize: scale(12),
+    fontWeight: "500",
+  },
+  cameraPermissionDenied: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: scale(24),
+    gap: scale(12),
+  },
+  cameraDeniedText: {
+    color: "#ffffff",
+    fontSize: scale(13),
+    textAlign: "center",
+    lineHeight: scale(19),
+  },
+  grantBtn: {
+    backgroundColor: colors.brand,
+    paddingHorizontal: scale(18),
+    paddingVertical: scale(10),
+    borderRadius: scale(10),
+  },
+  grantBtnText: {
+    color: colors.onFill,
+    fontSize: scale(13),
+    fontWeight: "600",
+  },
+  capturedBadge: {
+    position: "absolute",
+    top: scale(14),
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(6),
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(6),
+    borderRadius: scale(20),
+  },
+  capturedBadgeText: {
+    color: "#ffffff",
+    fontSize: scale(12),
+    fontWeight: "600",
+  },
+  modalBottomBar: {
+    paddingVertical: scale(12),
+  },
+  shutterRow: {
+    alignItems: "center",
+    gap: scale(8),
+  },
+  shutterBtn: {
+    width: scale(68),
+    height: scale(68),
+    borderRadius: scale(34),
+    borderWidth: 4,
+    borderColor: colors.brand,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  shutterInner: {
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(26),
+    backgroundColor: colors.brand,
+  },
+  shutterLabel: {
+    fontSize: scale(12),
+    color: colors.muted,
+    fontWeight: "500",
+  },
+  confirmRow: {
+    flexDirection: "row",
+    gap: scale(12),
+  },
+  retakeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: scale(6),
+    backgroundColor: colors.subtle,
+    paddingVertical: scale(14),
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  retakeBtnText: {
+    fontSize: scale(15),
+    fontWeight: "600",
+    color: colors.text,
+  },
+  confirmPunchBtn: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: scale(6),
+    backgroundColor: "#00a884",
+    paddingVertical: scale(14),
+    borderRadius: scale(12),
+  },
+  confirmPunchBtnText: {
+    fontSize: scale(15),
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  // Photo Preview Modal
+  photoModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: scale(20),
+  },
+  photoModalCard: {
+    width: "100%",
+    maxWidth: scale(340),
+    backgroundColor: colors.card,
+    borderRadius: scale(16),
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  photoModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: scale(14),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  photoModalTitle: {
+    fontSize: scale(15),
+    fontWeight: "700",
+    color: colors.text,
+  },
+  photoModalSub: {
+    fontSize: scale(11.5),
+    color: colors.muted,
+    marginTop: scale(1),
+  },
+  photoModalClose: {
+    padding: scale(4),
+  },
+  photoModalImage: {
+    width: "100%",
+    height: scale(300),
+    backgroundColor: "#000000",
+  },
+  photoModalLocRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(6),
+    padding: scale(12),
+    backgroundColor: colors.subtle,
+  },
+  photoModalLocText: {
+    fontSize: scale(12),
+    color: colors.text,
+    flex: 1,
   },
 })

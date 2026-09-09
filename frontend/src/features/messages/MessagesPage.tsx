@@ -73,7 +73,7 @@ export function MessagesPage() {
     queryKey: ["messages", "thread", withUser?.id],
     queryFn: () => listMessages(withUser!.id),
     enabled: withUser !== null,
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["messages"] })

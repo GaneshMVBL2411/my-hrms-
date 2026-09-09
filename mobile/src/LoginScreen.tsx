@@ -17,38 +17,34 @@ import { login, requestPasswordReset, type SessionUser } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
 import { Logo } from "./Logo"
+import { useKeyboard } from "./keyboard"
 
 export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) => void }) {
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
+  const { isKeyboardVisible, keyboardHeight } = useKeyboard()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [focusedField, setFocusedField] = useState<"email" | "password" | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [forgotOpen, setForgotOpen] = useState(false)
-  // Without this the email field's "next" key has nothing to move to, and the
-  // password field can only be reached by tapping it — which is impossible when
-  // the keyboard is covering it. Both values then end up in the email box.
+
   const passwordRef = useRef<TextInput>(null)
   const scrollRef = useRef<ScrollView>(null)
-
-  /**
-   * Brings the form back into view when the keyboard takes half the screen.
-   *
-   * The content is centred, so a shrinking window pushes the lower half of it
-   * off the bottom — the password field ended up behind the keyboard with no
-   * way to see what was being typed. React Native scrolls to a focused input
-   * on iOS and does not on Android, so this is the Android half.
-   *
-   * Deferred by a frame: the scroll has to happen after the window has
-   * actually resized, and asking before that scrolls against the old height
-   * and lands short.
-   */
-  const revealForm = () => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)
-  }
   const insets = useSafeAreaInsets()
+
+  const revealForm = (field: "email" | "password") => {
+    setFocusedField(field)
+    setTimeout(() => {
+      if (field === "password") {
+        scrollRef.current?.scrollTo({ y: scale(100), animated: true })
+      } else {
+        scrollRef.current?.scrollTo({ y: scale(20), animated: true })
+      }
+    }, 100)
+  }
 
   async function submit() {
     if (!email || !password || busy) return
@@ -66,35 +62,38 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      // Android is handled natively by softwareKeyboardLayoutMode: "resize" in
-      // app.json, which shrinks the window rather than sliding it. Adding a
-      // behavior here as well makes both adjust and the form jumps; what the
-      // resize does not do by itself is scroll to the focused field, which is
-      // what revealForm below is for.
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* A ScrollView so the form is still reachable on a short screen with the
-          keyboard up — on a small phone the button would otherwise be under it. */}
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + scale(40), paddingBottom: insets.bottom + scale(24) },
+          {
+            justifyContent: isKeyboardVisible ? "flex-start" : "center",
+            paddingTop: isKeyboardVisible ? insets.top + scale(12) : insets.top + scale(40),
+            paddingBottom: (isKeyboardVisible ? keyboardHeight : insets.bottom) + scale(24),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.brand}>
-          <Logo size={104} />
-          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.title}>
+        <View style={[styles.brand, isKeyboardVisible && styles.brandCompact]}>
+          <Logo size={isKeyboardVisible ? scale(44) : scale(92)} />
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_CAP}
+            style={[styles.title, isKeyboardVisible && styles.titleCompact]}
+          >
             Whhoohh Path
           </Text>
-          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.subtitle}>
-            Sign in to record your attendance
-          </Text>
+          {!isKeyboardVisible && (
+            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.subtitle}>
+              Sign in to record your attendance
+            </Text>
+          )}
         </View>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, focusedField === "email" && styles.inputFocused]}
           placeholder="Email"
           placeholderTextColor={colors.faint}
           autoCapitalize="none"
@@ -103,41 +102,34 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
           textContentType="username"
           autoComplete="email"
           returnKeyType="next"
-          onFocus={revealForm}
-          // blurOnSubmit={false} stops the keyboard closing and reopening as
-          // focus moves, which on Android drops the first keystroke.
+          onFocus={() => revealForm("email")}
+          onBlur={() => setFocusedField(null)}
           blurOnSubmit={false}
           onSubmitEditing={() => passwordRef.current?.focus()}
           value={email}
           onChangeText={setEmail}
           maxFontSizeMultiplier={FONT_SCALE_CAP}
         />
-        {/*
-          The reveal toggle is not a convenience here, it is a diagnostic. A
-          masked field shows dots whether or not the keyboard capitalised the
-          first character, so a password mangled on the way in looks identical
-          to a correct one and the only feedback is "Invalid email or password".
-          Being able to see what was actually typed is what makes that visible.
-        */}
+
         <View style={styles.passwordWrap}>
           <TextInput
             ref={passwordRef}
-            style={[styles.input, styles.passwordInput]}
+            style={[
+              styles.input,
+              styles.passwordInput,
+              focusedField === "password" && styles.inputFocused,
+            ]}
             placeholder="Password"
             placeholderTextColor={colors.faint}
             secureTextEntry={!showPassword}
-            // Android does not infer these from secureTextEntry the way iOS does,
-            // so without them Gboard capitalises the first character and the
-            // password is silently wrong — a correct password rejected as
-            // "Invalid email or password", with nothing on screen to explain it.
             autoCapitalize="none"
             autoCorrect={false}
             spellCheck={false}
             textContentType="password"
-            // textContentType is iOS-only; this is the Android half of the pair.
             autoComplete="password"
             returnKeyType="go"
-            onFocus={revealForm}
+            onFocus={() => revealForm("password")}
+            onBlur={() => setFocusedField(null)}
             value={password}
             onChangeText={setPassword}
             onSubmitEditing={submit}
@@ -148,13 +140,11 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
             onPress={() => setShowPassword((prev) => !prev)}
             accessibilityRole="button"
             accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-            // The icon is small; this widens the touch target to the 44pt
-            // minimum without moving anything on screen.
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
           >
             <Ionicons
               name={showPassword ? "eye-off-outline" : "eye-outline"}
-              size={scale(20)}
+              size={scale(21)}
               color={colors.muted}
             />
           </TouchableOpacity>
@@ -180,13 +170,11 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
           )}
         </TouchableOpacity>
 
-        {/* Below the button rather than beside the password field: this is the
-            way out of a dead end, not a second thing to choose between. */}
         <TouchableOpacity
           style={styles.forgotButton}
           onPress={() => setForgotOpen(true)}
           accessibilityRole="button"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.forgotText}>
             Forgot password?
@@ -195,9 +183,6 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
       </ScrollView>
 
       {forgotOpen && (
-        // Seeded with whatever is already in the email box, which is almost
-        // always the address they want — someone taps this after a failed
-        // sign-in, and retyping it on a phone keyboard is where typos come from.
         <ForgotPassword initialEmail={email} onClose={() => setForgotOpen(false)} />
       )}
     </KeyboardAvoidingView>
@@ -251,7 +236,10 @@ function ForgotPassword({
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={styles.sheet}>
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sheetTitle}>
             {sent ? "Check your email" : "Reset your password"}
@@ -324,37 +312,40 @@ function ForgotPassword({
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  content: { flexGrow: 1, justifyContent: "center", padding: scale(20) },
-  brand: { alignItems: "center", marginBottom: scale(4) },
+  content: { flexGrow: 1, padding: scale(20) },
+  brand: { alignItems: "center", marginBottom: scale(8) },
+  brandCompact: { marginBottom: scale(4) },
   title: { fontSize: scale(24), fontWeight: "700", color: colors.text, marginTop: scale(10) },
+  titleCompact: { fontSize: scale(18), marginTop: scale(4) },
   subtitle: { fontSize: scale(13), color: colors.muted, marginTop: scale(4), marginBottom: scale(20), textAlign: "center" },
   input: {
     backgroundColor: colors.card,
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderColor: colors.border,
     borderRadius: scale(10),
     paddingHorizontal: scale(13),
-    paddingVertical: scale(13),
+    paddingVertical: scale(12),
     fontSize: scale(15),
     color: colors.text,
     marginBottom: scale(10),
     minHeight: scale(48),
   },
+  inputFocused: {
+    borderColor: colors.brand,
+    borderWidth: 1.6,
+  },
   passwordWrap: { position: "relative", justifyContent: "center" },
-  // Keeps the typed password clear of the icon rather than running under it.
   passwordInput: { paddingRight: scale(46) },
   eyeButton: {
     position: "absolute",
     right: scale(13),
-    // Offset by the input's own marginBottom so the icon sits on the field's
-    // centre line rather than the wrapper's.
     top: 0,
     bottom: scale(10),
     justifyContent: "center",
@@ -362,7 +353,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   button: {
     backgroundColor: colors.brand,
     borderRadius: scale(10),
-    paddingVertical: scale(15),
+    paddingVertical: scale(14),
     alignItems: "center",
     justifyContent: "center",
     minHeight: scale(48),
@@ -397,8 +388,6 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // The confirmation has one button rather than a row, so it carries the gap
-  // that `sheetButtons` provides for the pair.
   sheetSoleBtn: { marginTop: scale(16) },
   sheetGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
   sheetGhostText: { color: colors.text, fontWeight: "600", fontSize: scale(14) },

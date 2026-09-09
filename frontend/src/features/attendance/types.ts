@@ -11,6 +11,14 @@ export interface AttendanceRecord {
   status: AttendanceStatus
   workingHours: number | null
   isLate: boolean
+  checkInPhotoId?: string | null
+  checkOutPhotoId?: string | null
+  checkInLatitude?: number | null
+  checkInLongitude?: number | null
+  checkInAccuracyM?: number | null
+  checkOutLatitude?: number | null
+  checkOutLongitude?: number | null
+  checkOutAccuracyM?: number | null
 }
 
 export interface AttendanceSummary {
