@@ -1,11 +1,11 @@
-import { registerRootComponent } from "expo"
-import { LogBox } from "react-native"
-import App from "./App"
+// First, and deliberately above the App import: the warnings it filters are
+// raised while modules are being imported, so the filter has to be installed
+// before those imports run. Moving this line below the next one puts it back
+// after the warnings it is meant to suppress.
+import "./src/logbox"
 
-// Suppress non-fatal Expo CLI disconnect warning modal from blocking the UI
-LogBox.ignoreLogs([
-  "Cannot connect to Expo CLI",
-])
+import { registerRootComponent } from "expo"
+import App from "./App"
 
 registerRootComponent(App)
 

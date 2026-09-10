@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, BackHandler, LogBox, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
@@ -13,11 +13,6 @@ import { MessagesScreen } from "./src/MessagesScreen"
 import { me, setUnauthorizedHandler, type SessionUser } from "./src/api"
 import { scale, FONT_SCALE_CAP } from "./src/ui"
 import { ThemeProvider, useStyles, useTheme, type Palette } from "./src/theme"
-
-LogBox.ignoreLogs([
-  "Cannot connect to Expo CLI",
-])
-
 
 /**
  * The native HRMS app: sign in once, then either punch in with a fingerprint or
