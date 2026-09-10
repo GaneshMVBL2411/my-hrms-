@@ -200,8 +200,21 @@ export function MessagesPage() {
                   )}
                   onClick={() => setWithUser({ id: t.userId, name: t.name })}
                 >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    {initials(t.name)}
+                  {/* The dot sits on the avatar rather than beside the name:
+                      it is a property of the person, and at this size a word
+                      would crowd out the message preview it has to share a
+                      row with. */}
+                  <span className="relative shrink-0">
+                    <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {initials(t.name)}
+                    </span>
+                    {t.isOnline && (
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-background bg-emerald-500"
+                        aria-label="Online"
+                        title="Online"
+                      />
+                    )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">

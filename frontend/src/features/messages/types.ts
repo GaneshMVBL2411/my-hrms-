@@ -22,4 +22,7 @@ export interface MessageThread {
   lastBody: string
   lastAt: string
   unread: number
+  /** Null for someone who has never opened either client. */
+  lastSeenAt: string | null
+  isOnline: boolean
 }

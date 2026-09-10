@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/app/ThemeProvider"
 import { AuthProvider } from "@/features/auth/AuthContext"
+import { Presence } from "@/features/messages/Presence"
 import { CompanyTheme } from "@/features/auth/CompanyTheme"
 
 import { TactileMotionProvider } from "@/components/shared/TactileMotionProvider"
@@ -26,6 +27,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
           {/* Inside AuthProvider because it reads the signed-in tenant, and
               above the routes so the colours are set before anything paints. */}
           <CompanyTheme />
+          {/* Above the routes for the same reason CompanyTheme is: presence is
+              about being signed in and present, not about which page is open. */}
+          <Presence />
           <TactileMotionProvider>
             <TooltipProvider delayDuration={200}>
               {children}
