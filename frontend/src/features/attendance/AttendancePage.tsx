@@ -2,7 +2,8 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { LogIn, LogOut, Clock, Camera, MapPin, ExternalLink } from "lucide-react"
+import { useAuthedFile } from "@/lib/useAuthedFile"
+import { LogIn, LogOut, Clock, Camera, MapPin, ExternalLink, Loader2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,11 +29,31 @@ function formatTime(value: string | null) {
   return value ? format(new Date(value), "hh:mm a") : "—"
 }
 
-function getPhotoUrl(photoId: string | null | undefined): string | null {
-  if (!photoId) return null
-  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001"
-  const token = sessionStorage.getItem("hrms_token") ?? localStorage.getItem("hrms_token")
-  return `${apiUrl}/files/${photoId}?token=${encodeURIComponent(token ?? "")}`
+/**
+ * The enlarged selfie in the dialog.
+ *
+ * Its own component only so it can hold the hook — the dialog around it is
+ * rendered inside a branch, and a hook cannot live there.
+ */
+function PreviewImage({ photoId }: { photoId: string }) {
+  const { url, failed } = useAuthedFile(photoId)
+
+  if (failed) {
+    return (
+      <div className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground">
+        <Camera className="size-6" />
+        <p className="text-xs">That photo could not be loaded.</p>
+      </div>
+    )
+  }
+  if (!url) {
+    return (
+      <div className="flex size-full items-center justify-center">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  return <img src={url} alt="Check-in photo" className="size-full object-cover" />
 }
 
 function PhotoCell({
@@ -48,10 +69,10 @@ function PhotoCell({
   time: string | null
   lat?: number | string | null
   lng?: number | string | null
-  onOpen: (info: { url: string; title: string; subtitle?: string; location?: string }) => void
+  onOpen: (info: { photoId: string; title: string; subtitle?: string; location?: string }) => void
 }) {
-  const url = getPhotoUrl(photoId)
-  if (!url) {
+  const { url, failed } = useAuthedFile(photoId)
+  if (!photoId) {
     return (
       <div className="flex items-center gap-1.5 text-muted-foreground/60">
         <Camera className="size-3.5" />
@@ -69,7 +90,7 @@ function PhotoCell({
       type="button"
       onClick={() =>
         onOpen({
-          url,
+          photoId,
           title: `${name} — Biometric Check In`,
           subtitle: time ? `Time: ${time}` : undefined,
           location: hasCoords ? `${numLat.toFixed(5)}, ${numLng.toFixed(5)}` : undefined,
@@ -78,15 +99,10 @@ function PhotoCell({
       className="group relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-muted shadow-xs transition-transform hover:scale-110 hover:border-primary focus:outline-hidden focus:ring-2 focus:ring-ring"
       title="Click to view biometric check-in selfie"
     >
-      <img
-        src={url}
-        alt={name}
-        className="size-full object-cover"
-        loading="lazy"
-        onError={(e) => {
-          (e.target as HTMLElement).style.display = "none"
-        }}
-      />
+      {/* Nothing is drawn until the bytes are in hand — an <img> with no src
+          shows a broken-image glyph, which is what this looked like before. */}
+      {url && !failed && <img src={url} alt={name} className="size-full object-cover" />}
+      {failed && <Camera className="size-3.5 text-muted-foreground/60" />}
       <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
         <Camera className="size-3 text-white" />
       </div>
@@ -140,7 +156,7 @@ export function AttendancePage() {
   const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [teamDate, setTeamDate] = useState(format(now, "yyyy-MM-dd"))
   const [previewPhoto, setPreviewPhoto] = useState<{
-    url: string
+    photoId: string
     title: string
     subtitle?: string
     location?: string
@@ -406,11 +422,7 @@ export function AttendancePage() {
               )}
             </DialogHeader>
             <div className="relative mt-2 overflow-hidden rounded-xl border border-border bg-black/5 aspect-square">
-              <img
-                src={previewPhoto.url}
-                alt="Check-in Photo"
-                className="size-full object-cover"
-              />
+              <PreviewImage photoId={previewPhoto.photoId} />
             </div>
             {previewPhoto.location && (
               <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/50 p-2.5 text-xs">

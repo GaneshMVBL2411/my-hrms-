@@ -84,6 +84,26 @@ interface Result<T> {
  * They go through here rather than calling fetch themselves so that token
  * handling and the 401-clears-the-session rule stay in a single place.
  */
+/**
+ * Fetches a stored file as bytes, with the session's token in the header.
+ *
+ * Separate from apiRequest because that one parses JSON, and this is an image.
+ * It lives here rather than at the call site so the token stays behind the
+ * same accessor as every other request — the alternative was each caller
+ * reading it out of storage itself, which is how the query-string version of
+ * this came about.
+ */
+export async function fetchFileBlob(fileId: string): Promise<Blob> {
+  const token = tokenStore.get()
+  const response = await fetch(`${API_URL}/files/${encodeURIComponent(fileId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!response.ok) {
+    throw new Error(`Could not load file ${fileId}: ${response.status}`)
+  }
+  return response.blob()
+}
+
 export async function apiRequest(path: string, init?: RequestInit): Promise<any> {
   return request(path, init)
 }
