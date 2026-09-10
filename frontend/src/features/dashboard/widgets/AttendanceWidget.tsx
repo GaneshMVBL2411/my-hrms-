@@ -1,23 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  isWeekend,
-  isFuture,
-  startOfWeek,
-  endOfWeek,
-  isWithinInterval,
-} from "date-fns"
+import { useQuery } from "@tanstack/react-query"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isFuture, startOfWeek, endOfWeek, isWithinInterval } from "date-fns"
 import { LogIn, LogOut, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { checkIn, checkOut, getMyAttendance } from "@/features/attendance/api"
+import { getMyAttendance } from "@/features/attendance/api"
 import type { AttendanceStatus } from "@/features/attendance/types"
-import { errorMessage } from "@/lib/errors"
+
+import { usePunchCapture } from "@/features/attendance/usePunchCapture"
 
 const statusColor: Record<AttendanceStatus, string> = {
   present: "bg-success",
@@ -30,12 +20,8 @@ function formatTime(value: string | null) {
   return value ? format(new Date(value), "hh:mm a") : "—"
 }
 
-function formatErrorDetail(error: unknown, fallback: string) {
-  return errorMessage(error, fallback)
-}
-
 export function AttendanceWidget() {
-  const queryClient = useQueryClient()
+  const { punch, isPending, dialog } = usePunchCapture()
   const now = new Date()
   const todayStr = format(now, "yyyy-MM-dd")
 
@@ -55,24 +41,6 @@ export function AttendanceWidget() {
       isWithinInterval(new Date(r.date), { start: weekStart, end: weekEnd })
   ).length
   const monthPresent = (myAttendance ?? []).filter((r) => r.status === "present" || r.status === "half_day").length
-
-  const checkInMutation = useMutation({
-    mutationFn: checkIn,
-    onSuccess: () => {
-      toast.success("Checked in")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (error) => toast.error(formatErrorDetail(error, "Could not check in")),
-  })
-
-  const checkOutMutation = useMutation({
-    mutationFn: checkOut,
-    onSuccess: () => {
-      toast.success("Checked out")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (error) => toast.error(formatErrorDetail(error, "Could not check out")),
-  })
 
   const monthDays = eachDayOfInterval({ start: startOfMonth(now), end: endOfMonth(now) })
 
@@ -95,8 +63,8 @@ export function AttendanceWidget() {
             <Button
               size="sm"
               className="rounded-md"
-              disabled={!!today?.checkIn || checkInMutation.isPending}
-              onClick={() => checkInMutation.mutate()}
+              disabled={!!today?.checkIn || isPending}
+              onClick={() => punch("in")}
             >
               <LogIn className="mr-2 size-4" />
               Check In
@@ -105,8 +73,8 @@ export function AttendanceWidget() {
               size="sm"
               variant="outline"
               className="rounded-md"
-              disabled={!today?.checkIn || !!today?.checkOut || checkOutMutation.isPending}
-              onClick={() => checkOutMutation.mutate()}
+              disabled={!today?.checkIn || !!today?.checkOut || isPending}
+              onClick={() => punch("out")}
             >
               <LogOut className="mr-2 size-4" />
               Check Out
@@ -158,6 +126,8 @@ export function AttendanceWidget() {
           </div>
         </div>
       </CardContent>
+      {/* The camera. Renders only while a punch is being taken. */}
+      {dialog}
     </Card>
   )
 }

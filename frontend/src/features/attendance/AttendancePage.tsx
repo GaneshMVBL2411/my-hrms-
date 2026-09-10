@@ -1,6 +1,5 @@
 import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+import { useQuery } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useAuthedFile } from "@/lib/useAuthedFile"
 import { LogIn, LogOut, Clock, Camera, MapPin, ExternalLink, Loader2 } from "lucide-react"
@@ -12,11 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { checkIn, checkOut, getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
+import { getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
 import { BiometricPunch } from "@/features/attendance/BiometricPunch"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { AttendanceStatus } from "@/features/attendance/types"
-import { errorMessage } from "@/lib/errors"
+
+import { usePunchCapture } from "@/features/attendance/usePunchCapture"
 
 const statusTone: Record<AttendanceStatus, "success" | "warning" | "danger" | "secondary"> = {
   present: "success",
@@ -151,7 +151,7 @@ function LocationCell({
 
 export function AttendancePage() {
   const { user } = useAuth()
-  const queryClient = useQueryClient()
+  const { punch, isPending, dialog } = usePunchCapture()
   const now = new Date()
   const isManager = (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin"
   const [teamDate, setTeamDate] = useState(format(now, "yyyy-MM-dd"))
@@ -168,28 +168,6 @@ export function AttendancePage() {
   })
 
   const today = myAttendance?.find((r) => r.date === format(now, "yyyy-MM-dd"))
-
-  const checkInMutation = useMutation({
-    mutationFn: checkIn,
-    onSuccess: () => {
-      toast.success("Checked in")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, "Could not check in"))
-    },
-  })
-
-  const checkOutMutation = useMutation({
-    mutationFn: checkOut,
-    onSuccess: () => {
-      toast.success("Checked out")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, "Could not check out"))
-    },
-  })
 
   const { data: teamData, isLoading: loadingTeam } = useQuery({
     queryKey: ["attendance", "team", teamDate],
@@ -230,8 +208,8 @@ export function AttendancePage() {
               <div className="flex gap-2">
                 <Button
                   className="rounded-xl shadow-xs"
-                  disabled={!!today?.checkIn || checkInMutation.isPending}
-                  onClick={() => checkInMutation.mutate()}
+                  disabled={!!today?.checkIn || isPending}
+                  onClick={() => punch("in")}
                 >
                   <LogIn className="mr-2 size-4" />
                   Check In
@@ -239,8 +217,8 @@ export function AttendancePage() {
                 <Button
                   variant="outline"
                   className="rounded-xl"
-                  disabled={!today?.checkIn || !!today?.checkOut || checkOutMutation.isPending}
-                  onClick={() => checkOutMutation.mutate()}
+                  disabled={!today?.checkIn || !!today?.checkOut || isPending}
+                  onClick={() => punch("out")}
                 >
                   <LogOut className="mr-2 size-4" />
                   Check Out
@@ -445,6 +423,8 @@ export function AttendancePage() {
           </DialogContent>
         </Dialog>
       )}
+      {/* The camera. Renders only while a punch is being taken. */}
+      {dialog}
     </div>
   )
 }

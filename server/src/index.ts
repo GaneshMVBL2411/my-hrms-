@@ -53,7 +53,7 @@ const fileUploadBodyParser = express.json({ limit: "10mb" })
  * Skipping these paths rather than raising the global limit keeps the DoS
  * ceiling low everywhere else, which is what the 100kb was for.
  */
-const LARGE_BODY_PATHS = ["/files", "/device/punch"]
+const LARGE_BODY_PATHS = ["/files", "/device/punch", "/attendance/punch"]
 
 app.use((req, res, next) => {
   if (LARGE_BODY_PATHS.some((path) => req.path === path || req.path.startsWith(`${path}/`))) {
@@ -502,7 +502,11 @@ app.get("/rest/:table", requireAuth, apiLimiter, async (req, res) => {
  * confusing 42883 and hides the fact that the feature is unbuilt.
  */
 const CALLABLE = new Set([
-  "current_user_profile", "get_employee_detail", "attendance_check_in", "attendance_check_out",
+  "current_user_profile", "get_employee_detail",
+  // attendance_check_in and attendance_check_out are deliberately absent. They
+  // are called by /attendance/punch, which stores the photograph in the same
+  // transaction; reachable through /rpc they would let a client record a punch
+  // with no photo at all, which is the thing that route exists to prevent.
   "attendance_summary", "apply_leave", "decide_leave_request", "update_task",
   "assign_asset", "return_asset", "generate_payslip", "generate_payslips_bulk",
   "payroll_summary", "generate_letter", "get_letter_view", "get_calendar",
@@ -523,8 +527,9 @@ const CALLABLE = new Set([
   // /auth/me already returns. Its absence broke every "my ..." screen: leave
   // balances, my attendance, my salary structure and my assets all call it.
   "app_employee_id",
-  // Platform console. Each re-checks app_is_super_admin() itself.
-  "platform_company_overview", "platform_summary",
+  // Platform console. Each re-checks app_is_super_admin() / app_is_platform_user() itself.
+  "platform_company_overview", "platform_summary", "platform_subscription_plans",
+  "platform_create_company", "platform_update_subscription", "platform_update_company_modules",
   "start_support_session", "end_support_session",
 ])
 
@@ -656,7 +661,14 @@ async function recordPunch(
   user: { userId: number; companyId: number | null },
   direction: "in" | "out",
   photo: unknown,
-  location: unknown
+  location: unknown,
+  /**
+   * How the punch was authorised, which is not the same question as what is
+   * attached to it. "biometric" means a signature was checked; "manual" means
+   * somebody pressed a button. A photograph is evidence either way and does
+   * not promote one into the other.
+   */
+  method: "biometric" | "manual" = "biometric"
 ): Promise<{ id: number | null; photoStored: boolean; locationStored: boolean }> {
   const place = readPlace(location)
   // The selfie is evidence attached to the record, never the thing that
@@ -701,11 +713,23 @@ async function recordPunch(
     }
   }
 
-  const fn = direction === "in" ? "attendance_check_in_verified" : "attendance_check_out_verified"
-  const { rows } = await client.query(
-    `select public.${fn}('biometric', $1, $2, $3, $4) as result`,
-    [photoId, place.latitude, place.longitude, place.accuracy]
-  )
+  // The two families take different arguments — the verified one is told
+  // which method to record, the manual one is the method — so the call is
+  // built per family rather than the name being swapped in one template.
+  const { rows } =
+    method === "biometric"
+      ? await client.query(
+          `select public.${
+            direction === "in" ? "attendance_check_in_verified" : "attendance_check_out_verified"
+          }('biometric', $1, $2, $3, $4) as result`,
+          [photoId, place.latitude, place.longitude, place.accuracy]
+        )
+      : await client.query(
+          `select public.${
+            direction === "in" ? "attendance_check_in" : "attendance_check_out"
+          }($1, $2, $3, $4) as result`,
+          [photoId, place.latitude, place.longitude, place.accuracy]
+        )
   return {
     id: rows[0]?.result ?? null,
     photoStored: photoId !== null,
@@ -786,6 +810,41 @@ app.post("/device/challenge", requireAuth, authLimiter, (req, res) => {
  * decoded image at 2MB, which is the limit that actually governs what is
  * stored; this one only has to be wide enough to let it through.
  */
+/**
+ * A punch from the browser, with the photograph taken at the time.
+ *
+ * Separate from /device/punch because nothing here is verified. That route
+ * checks an ed25519 signature over a challenge this server issued, and refuses
+ * the punch without one. This route has no such proof and does not pretend to:
+ * it records a manual punch, which is what pressing a button in a browser is,
+ * and attaches the selfie as evidence beside it.
+ *
+ * The photo is therefore not optional-but-encouraged security. It is a record
+ * of who was at the screen, useful to whoever reviews attendance, and worth
+ * nothing against someone determined to mislead — which is exactly what the
+ * native path exists for.
+ */
+app.post("/attendance/punch/:direction", requireAuth, authLimiter, fileUploadBodyParser, async (req, res) => {
+  const direction = req.params.direction
+  if (direction !== "in" && direction !== "out") {
+    return res.status(404).json({ error: "Unknown punch direction" })
+  }
+
+  const { photo, location } = req.body ?? {}
+  try {
+    const result = await withSession(req.user!, (client) =>
+      recordPunch(client, req.user!, direction, photo, location, "manual")
+    )
+    res.json(result)
+  } catch (error) {
+    const err = error as { code?: string; message: string }
+    // P0001 is the function's own "Already checked in today" and the like:
+    // a rule the caller can act on, not a fault in this server.
+    if (err.code === "P0001") return res.status(400).json({ error: err.message })
+    throw error
+  }
+})
+
 app.post("/device/punch/:direction", requireAuth, authLimiter, fileUploadBodyParser, async (req, res) => {
   const direction = req.params.direction
   if (direction !== "in" && direction !== "out") {
@@ -969,6 +1028,14 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 // ------------------------------------------------------------------- startup
 const port = Number(process.env.PORT) || 3001
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandled rejection:", reason)
+})
+
+process.on("uncaughtException", (error) => {
+  console.error("[process] uncaught exception:", error)
+})
 
 app.listen(port, async () => {
   console.log(`HRMS API listening on :${port}`)

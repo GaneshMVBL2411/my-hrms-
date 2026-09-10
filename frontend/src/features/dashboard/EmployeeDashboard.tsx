@@ -1,28 +1,15 @@
 import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useNavigate } from "react-router-dom"
-import { toast } from "sonner"
-import {
-  CalendarClock,
-  CalendarCheck,
-  Clock,
-  FolderKanban,
-  Wallet,
-  Users,
-  LogIn,
-  LogOut,
-  FileText,
-  Laptop,
-  ListChecks,
-} from "lucide-react"
+import { CalendarClock, CalendarCheck, Clock, FolderKanban, Wallet, Users, LogIn, LogOut, FileText, Laptop, ListChecks } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { StatCard } from "@/components/shared/StatCard"
 import { useAuth } from "@/features/auth/AuthContext"
-import { getMyAttendance, checkIn, checkOut } from "@/features/attendance/api"
+import { getMyAttendance } from "@/features/attendance/api"
 import { getBalance } from "@/features/leaves/api"
 import { listProjects } from "@/features/projects/api"
 import { listEmployees, getEmployee } from "@/features/employees/api"
@@ -37,7 +24,8 @@ import { AttendanceWidget } from "@/features/dashboard/widgets/AttendanceWidget"
 import { LeaveWidget } from "@/features/dashboard/widgets/LeaveWidget"
 import { TaskInsightsWidget } from "@/features/dashboard/widgets/TaskInsightsWidget"
 import { ProfileSummaryCard } from "@/features/dashboard/widgets/ProfileSummaryCard"
-import { errorMessage } from "@/lib/errors"
+
+import { usePunchCapture } from "@/features/attendance/usePunchCapture"
 
 function greeting(hour: number) {
   if (hour < 12) return "Good Morning"
@@ -48,7 +36,7 @@ function greeting(hour: number) {
 export function EmployeeDashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const { punch, isPending, dialog } = usePunchCapture()
   const now = new Date()
   const todayStr = format(now, "yyyy-MM-dd")
   const employeeId = user?.employeeId ?? undefined
@@ -70,23 +58,6 @@ export function EmployeeDashboard() {
   const presentDays = myAttendance?.filter((r) => r.status === "present" || r.status === "half_day").length ?? 0
 
   // Check in/out mutations
-  const checkInMutation = useMutation({
-    mutationFn: checkIn,
-    onSuccess: () => {
-      toast.success("Clocked in successfully")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (err) => toast.error(errorMessage(err, "Could not clock in")),
-  })
-
-  const checkOutMutation = useMutation({
-    mutationFn: checkOut,
-    onSuccess: () => {
-      toast.success("Clocked out successfully")
-      queryClient.invalidateQueries({ queryKey: ["attendance"] })
-    },
-    onError: (err) => toast.error(errorMessage(err, "Could not clock out")),
-  })
 
   // 3. Leave Balances
   const { data: balances } = useQuery({ queryKey: ["leaves", "balance"], queryFn: getBalance })
@@ -204,8 +175,8 @@ export function EmployeeDashboard() {
               <Button
                 size="sm"
                 className="rounded-xl h-9 px-4 gap-1.5 shadow-xs"
-                disabled={!!today?.checkIn || checkInMutation.isPending}
-                onClick={() => checkInMutation.mutate()}
+                disabled={!!today?.checkIn || isPending}
+                onClick={() => punch("in")}
               >
                 <LogIn className="size-4" />
                 <span>Clock In</span>
@@ -214,8 +185,8 @@ export function EmployeeDashboard() {
                 size="sm"
                 variant="outline"
                 className="rounded-xl h-9 px-4 gap-1.5 hover:bg-muted"
-                disabled={!today?.checkIn || !!today?.checkOut || checkOutMutation.isPending}
-                onClick={() => checkOutMutation.mutate()}
+                disabled={!today?.checkIn || !!today?.checkOut || isPending}
+                onClick={() => punch("out")}
               >
                 <LogOut className="size-4" />
                 <span>Clock Out</span>
@@ -383,6 +354,8 @@ export function EmployeeDashboard() {
 
       {/* Leave Application Dialog */}
       <ApplyLeaveDialog open={applyLeaveOpen} onOpenChange={setApplyLeaveOpen} />
+      {/* The camera. Renders only while a punch is being taken. */}
+      {dialog}
     </div>
   )
 }

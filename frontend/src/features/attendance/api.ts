@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { supabase, apiRequest } from "@/lib/supabase"
 import { unwrap, ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { pageRange } from "@/lib/query"
@@ -13,12 +13,33 @@ export async function getAttendanceRecord(id: number): Promise<AttendanceRecord>
   )
 }
 
-export async function checkIn(): Promise<AttendanceRecord> {
-  return getAttendanceRecord(unwrap<number>(await supabase.rpc("attendance_check_in")))
+/**
+ * Records a punch with the photograph taken alongside it.
+ *
+ * Goes through a route rather than the RPC because the image travels with it:
+ * the server stores the file, caps its size, and writes the punch in the same
+ * transaction, so a photo that cannot be stored costs the photo and not the
+ * attendance. Doing it here would mean two round trips and a window in which
+ * the punch exists and its evidence does not.
+ *
+ * The route records a manual punch and says so. Nothing in a browser is
+ * verified — no signed challenge, no key behind a fingerprint — and the
+ * method column stays honest about that.
+ */
+async function punch(direction: "in" | "out", photo: string): Promise<AttendanceRecord> {
+  const result = await apiRequest(`/attendance/punch/${direction}`, {
+    method: "POST",
+    body: JSON.stringify({ photo }),
+  })
+  return getAttendanceRecord(result.id as number)
 }
 
-export async function checkOut(): Promise<AttendanceRecord> {
-  return getAttendanceRecord(unwrap<number>(await supabase.rpc("attendance_check_out")))
+export async function checkIn(photo: string): Promise<AttendanceRecord> {
+  return punch("in", photo)
+}
+
+export async function checkOut(photo: string): Promise<AttendanceRecord> {
+  return punch("out", photo)
 }
 
 export async function getMyAttendance(year: number, month: number): Promise<AttendanceRecord[]> {
