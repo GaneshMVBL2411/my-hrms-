@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useTheme } from "next-themes"
-import { Search, Bell, Moon, Sun, Monitor, Check, LogOut, UserCircle, Menu } from "lucide-react"
+import { Search, Bell, LogOut, UserCircle, Menu } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,7 +16,6 @@ import { useAuth } from "@/features/auth/AuthContext"
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user, signOut } = useAuth()
-  const { theme, setTheme } = useTheme()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
 
@@ -58,62 +56,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       </form>
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-        {/* Theme Selection Dropdown (Light mode / Dark mode / System) */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-xl"
-              aria-label="Select Theme Mode"
-              title={`Theme: ${theme === "dark" ? "Dark mode" : theme === "system" ? "System" : "Light mode"}`}
-            >
-              {theme === "dark" ? (
-                <Moon className="size-4.5 text-primary" />
-              ) : theme === "system" ? (
-                <Monitor className="size-4.5 text-muted-foreground" />
-              ) : (
-                <Sun className="size-4.5 text-warning" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44 rounded-2xl p-1.5 shadow-lg border-border">
-            <div className="px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-              Select Theme
-            </div>
-            <DropdownMenuItem
-              className="rounded-xl cursor-pointer flex items-center justify-between py-2"
-              onClick={() => setTheme("light")}
-            >
-              <span className="flex items-center gap-2 text-xs font-medium">
-                <Sun className="size-4 text-warning" />
-                Light Mode
-              </span>
-              {theme === "light" && <Check className="size-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl cursor-pointer flex items-center justify-between py-2"
-              onClick={() => setTheme("dark")}
-            >
-              <span className="flex items-center gap-2 text-xs font-medium">
-                <Moon className="size-4 text-primary" />
-                Dark Mode
-              </span>
-              {theme === "dark" && <Check className="size-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl cursor-pointer flex items-center justify-between py-2"
-              onClick={() => setTheme("system")}
-            >
-              <span className="flex items-center gap-2 text-xs font-medium">
-                <Monitor className="size-4 text-muted-foreground" />
-                System Default
-              </span>
-              {theme === "system" && <Check className="size-3.5 text-primary" />}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="relative rounded-xl" aria-label="Notifications">
@@ -158,37 +100,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                     Super Admin
                   </span>
                 )}
-              </div>
-            </div>
-
-            {/* Theme quick select inside profile dropdown */}
-            <div className="px-2.5 py-2">
-              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Select Theme</p>
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1">
-                <button
-                  type="button"
-                  onClick={() => setTheme("light")}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1 text-xs font-medium transition-colors cursor-pointer ${
-                    theme === "light"
-                      ? "bg-card text-foreground shadow-2xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Sun className="size-3.5 text-warning" />
-                  <span>Light</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTheme("dark")}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1 text-xs font-medium transition-colors cursor-pointer ${
-                    theme === "dark"
-                      ? "bg-card text-foreground shadow-2xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Moon className="size-3.5 text-primary" />
-                  <span>Dark</span>
-                </button>
               </div>
             </div>
 
