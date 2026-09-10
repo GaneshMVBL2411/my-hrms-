@@ -54,6 +54,27 @@ export const pool = new Pool({
   connectionTimeoutMillis: 10_000,
 })
 
+/**
+ * Keeps a dropped idle connection from taking the server with it.
+ *
+ * Without this the API died, repeatedly, with "Connection terminated
+ * unexpectedly" and no further explanation. The cause is ordinary and
+ * unavoidable: Neon closes pooled connections that have been idle, and pg
+ * surfaces that as an `error` event on the idle client. An `error` event with
+ * no listener is not an error in Node — it is a thrown exception that nothing
+ * catches, so the process exits. A backend that stops serving because nobody
+ * made a request for a few minutes.
+ *
+ * The pool has already discarded the client by the time this runs; there is
+ * nothing to repair and the next request gets a fresh connection. So this
+ * logs and returns, which is the whole fix. It is deliberately not silent —
+ * a burst of these means something about the network or the plan's connection
+ * ceiling is worth looking at, and that signal should survive.
+ */
+pool.on("error", (error) => {
+  console.error(`[db] idle client dropped: ${error.message}`)
+})
+
 export interface SessionContext {
   /** public.users.id of the authenticated caller. */
   userId: number
