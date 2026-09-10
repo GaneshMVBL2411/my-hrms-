@@ -45,7 +45,7 @@ export function AttendanceWidget() {
   const monthDays = eachDayOfInterval({ start: startOfMonth(now), end: endOfMonth(now) })
 
   return (
-    <Card className="rounded-md border shadow-none">
+    <Card className="flex h-full flex-col rounded-md border shadow-none">
       <CardHeader>
         <CardTitle className="text-base">Attendance</CardTitle>
       </CardHeader>

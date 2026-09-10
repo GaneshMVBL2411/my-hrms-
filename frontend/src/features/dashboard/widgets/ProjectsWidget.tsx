@@ -33,18 +33,24 @@ export function ProjectsWidget({ employeeId }: { employeeId?: number }) {
   const projects = data?.items ?? []
 
   return (
-    <Card className="rounded-md border shadow-none">
+    // Fills its grid cell. It sits beside the schedule, which is a whole
+    // month tall, so a short card left a void the height of a calendar
+    // underneath it. Stretching means the empty state is centred in a
+    // full-height card instead of stranded at the top of an empty column.
+    <Card className="flex h-full flex-col rounded-md border shadow-none">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">My Projects</CardTitle>
         <Button variant="ghost" size="sm" className="rounded-md" onClick={() => navigate("/projects")}>
           View all
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {isLoading ? (
           <Skeleton className="h-40 w-full rounded-md" />
         ) : projects.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">You're not assigned to any projects yet.</p>
+          <p className="flex flex-1 items-center justify-center py-6 text-center text-sm text-muted-foreground">
+            You're not assigned to any projects yet.
+          </p>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {projects.map((project) => {

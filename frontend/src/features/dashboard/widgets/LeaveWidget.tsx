@@ -45,7 +45,7 @@ export function LeaveWidget({ onApplyLeave }: { onApplyLeave: () => void }) {
   const pendingCount = myRequests?.filter((r) => r.status === "pending").length ?? 0
 
   return (
-    <Card className="rounded-md border shadow-none">
+    <Card className="flex h-full flex-col rounded-md border shadow-none">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Leaves</CardTitle>
         <Button variant="ghost" size="sm" className="rounded-md" onClick={() => navigate("/leaves")}>
