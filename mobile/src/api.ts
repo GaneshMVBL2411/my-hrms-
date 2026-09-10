@@ -138,9 +138,26 @@ export interface TodayRecord {
   check_out_accuracy_m?: number | null
 }
 
-export async function getFileUrl(photoId: string): Promise<string> {
+/**
+ * What to hand an <Image> for a stored file.
+ *
+ * /files/:id is behind requireAuth, which reads the Authorization header. This
+ * used to return the token in the query string instead, and the server ignored
+ * it — every check-in photo in this app was a 401 rendered as a blank frame.
+ *
+ * React Native's Image accepts headers on its source, so unlike a browser
+ * <img> there is no need for a blob here: the token travels the same way it
+ * does on every other request, and never in a URL where it would reach access
+ * logs.
+ */
+export async function fileSource(
+  photoId: string
+): Promise<{ uri: string; headers: Record<string, string> }> {
   const token = await getToken()
-  return `${API_URL}/files/${photoId}?token=${encodeURIComponent(token ?? "")}`
+  return {
+    uri: `${API_URL}/files/${encodeURIComponent(photoId)}`,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }
 }
 
 /** Today's row for the signed-in employee, or null before the first punch. */

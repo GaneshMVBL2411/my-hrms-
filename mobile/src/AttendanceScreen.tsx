@@ -19,7 +19,7 @@ import * as Location from "expo-location"
 import {
   deviceChallenge,
   devicePunch,
-  getFileUrl,
+  fileSource,
   logout,
   registerDevice,
   today as fetchToday,
@@ -92,9 +92,11 @@ export function AttendanceScreen({
   const insets = useSafeAreaInsets()
 
   // Verified punch & photo / location state
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<{ uri: string; headers: Record<string, string> } | null>(null)
   const [fullPhotoModal, setFullPhotoModal] = useState<{
-    url: string
+    // The source rather than a URL: the request needs its Authorization
+    // header, and that travels on the source object.
+    source: { uri: string; headers: Record<string, string> }
     time: string
     location?: string
   } | null>(null)
@@ -116,9 +118,9 @@ export function AttendanceScreen({
     const todayRec = await fetchToday(user.employeeId).catch(() => null)
     setRecord(todayRec)
     if (todayRec?.check_in_photo_id) {
-      getFileUrl(todayRec.check_in_photo_id).then(setPhotoPreviewUrl).catch(() => null)
+      fileSource(todayRec.check_in_photo_id).then(setPhotoPreview).catch(() => null)
     } else {
-      setPhotoPreviewUrl(null)
+      setPhotoPreview(null)
     }
   }, [user.employeeId])
 
@@ -344,12 +346,12 @@ export function AttendanceScreen({
             </Text>
           </View>
 
-          {photoPreviewUrl && (
+          {photoPreview && (
             <TouchableOpacity
               style={styles.todayPhotoWrap}
               onPress={() =>
                 setFullPhotoModal({
-                  url: photoPreviewUrl,
+                  source: photoPreview,
                   time: formatTime(record?.check_in),
                   location:
                     record?.check_in_latitude && record?.check_in_longitude
@@ -359,7 +361,7 @@ export function AttendanceScreen({
               }
               activeOpacity={0.8}
             >
-              <Image source={{ uri: photoPreviewUrl }} style={styles.todayPhotoThumb} />
+              <Image source={photoPreview} style={styles.todayPhotoThumb} />
               <View style={styles.todayPhotoOverlay}>
                 <Ionicons name="camera" size={scale(11)} color="#ffffff" />
               </View>
@@ -621,7 +623,7 @@ export function AttendanceScreen({
                 </TouchableOpacity>
               </View>
 
-              <Image source={{ uri: fullPhotoModal.url }} style={styles.photoModalImage} />
+              <Image source={fullPhotoModal.source} style={styles.photoModalImage} />
 
               {fullPhotoModal.location && (
                 <View style={styles.photoModalLocRow}>
