@@ -47,8 +47,20 @@ export function StatCard({
     >
       <CardContent className="flex items-center justify-between gap-3 p-4 sm:gap-4 sm:p-5">
         <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm text-muted-foreground truncate">{label}</p>
-          <p className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold tracking-tight text-foreground">{value}</p>
+          {/* Wraps rather than truncating. A label clipped to "Toda..." names
+              nothing, and these are short enough that two lines costs less
+              than the meaning does. */}
+          <p className="text-xs sm:text-sm leading-tight text-muted-foreground">{label}</p>
+          {/* The value truncates instead, because it is the one thing here
+              that can arrive unexpectedly long — and when it did, it ran out
+              of the card and across its neighbour. Its full text stays
+              readable on hover. */}
+          <p
+            className="mt-0.5 sm:mt-1 truncate text-xl sm:text-2xl font-bold tracking-tight text-foreground"
+            title={String(value)}
+          >
+            {value}
+          </p>
         </div>
         <div
           className={cn(

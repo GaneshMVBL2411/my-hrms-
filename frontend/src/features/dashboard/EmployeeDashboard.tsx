@@ -90,7 +90,17 @@ export function EmployeeDashboard() {
 
   // 3. Leave Balances
   const { data: balances } = useQuery({ queryKey: ["leaves", "balance"], queryFn: getBalance })
-  const remainingLeaves = balances?.reduce((sum, b) => sum + b.remainingDays, 0) ?? 0
+  /**
+   * Coerced, not trusted to already be a number.
+   *
+   * `remainingDays` is typed number and arrives as a string: it is a Postgres
+   * `numeric`, and pg returns those as strings because a double cannot hold
+   * every value the type can. `sum + b.remainingDays` therefore concatenated
+   * rather than added, and the card read "012.010.015." — three balances laid
+   * end to end and overflowing its own tile.
+   */
+  const remainingLeaves =
+    balances?.reduce((sum, b) => sum + (Number(b.remainingDays) || 0), 0) ?? 0
 
   // 4. Projects
   const { data: myProjects } = useQuery({
@@ -256,7 +266,10 @@ export function EmployeeDashboard() {
       </div>
 
       {/* 2. Personal Vitals KPI Stat Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
+      {/* Four across, not seven. Seven left roughly 130px a card, which is
+          narrower than "Present Days (Month)" and is why every label was
+          showing as four letters and an ellipsis. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         <StatCard
           label="Today's Hours"
           value={workingHoursToday > 0 ? `${workingHoursToday}h` : "—"}

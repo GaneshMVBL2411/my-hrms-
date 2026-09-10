@@ -30,6 +30,8 @@ import {
   ArrowRight,
   Briefcase,
   Layers,
+  Landmark,
+  Building2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -235,6 +237,89 @@ function OrganizationDashboard() {
           )}
         </div>
       </div>
+
+      {/* Client HR Self-Service Setup Checklist Banner (shows when organization is new) */}
+      {canManage && totalEmployees <= 2 && (
+        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:p-5 shadow-2xs">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-primary/15 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white shadow-2xs">
+                <Building2 className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  Welcome to {user?.companyName ?? "Your Company"} HRMS
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Get your workspace ready by configuring your company details and adding your team members.
+                </p>
+              </div>
+            </div>
+            <Badge variant="outline" className="w-fit text-primary border-primary/30 text-xs font-semibold">
+              Organization Setup
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+            <button
+              type="button"
+              onClick={() => navigate("/company-bank")}
+              className="group flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:shadow-2xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600">
+                  <Landmark className="size-3.5" />
+                </div>
+                <span className="text-[11px] font-bold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  Configure <ArrowRight className="size-3" />
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-foreground">1. Company Bank & Payouts</p>
+              <p className="text-[11px] text-muted-foreground">
+                Set up disbursement bank account, IFSC and statutory tax credentials.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/employees")}
+              className="group flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:shadow-2xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
+                  <UserPlus className="size-3.5" />
+                </div>
+                <span className="text-[11px] font-bold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  Add Staff <ArrowRight className="size-3" />
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-foreground">2. Add Team & Employees</p>
+              <p className="text-[11px] text-muted-foreground">
+                Create new employee accounts, departments, designations and assign roles.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/settings")}
+              className="group flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:shadow-2xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+                  <Building2 className="size-3.5" />
+                </div>
+                <span className="text-[11px] font-bold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  Settings <ArrowRight className="size-3" />
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-foreground">3. Company Preferences</p>
+              <p className="text-[11px] text-muted-foreground">
+                Customize work schedules, office locations and leave allowance policies.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Workforce Vitals Stat Cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">

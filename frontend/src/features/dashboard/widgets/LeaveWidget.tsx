@@ -32,9 +32,16 @@ export function LeaveWidget({ onApplyLeave }: { onApplyLeave: () => void }) {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 4)
 
-  const remainingLeaves = balances?.reduce((sum, b) => sum + b.remainingDays, 0) ?? 0
+  // Both coerced: these are Postgres `numeric` columns and pg returns them as
+  // strings, because a double cannot represent every value the type can. Added
+  // as they arrive, `+` concatenates — "0" then "012.0" then "012.010.0" —
+  // which is what the dashboard tile was showing.
+  const remainingLeaves =
+    balances?.reduce((sum, b) => sum + (Number(b.remainingDays) || 0), 0) ?? 0
   const appliedDays =
-    myRequests?.filter((r) => r.status !== "rejected").reduce((sum, r) => sum + r.daysCount, 0) ?? 0
+    myRequests
+      ?.filter((r) => r.status !== "rejected")
+      .reduce((sum, r) => sum + (Number(r.daysCount) || 0), 0) ?? 0
   const pendingCount = myRequests?.filter((r) => r.status === "pending").length ?? 0
 
   return (
