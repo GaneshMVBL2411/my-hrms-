@@ -73,6 +73,34 @@ export const lightColors = {
   tickRead: "#8ed8ff",
   tickFailed: "#ffb4a8",
 
+  /**
+   * The chat, which is the one screen people arrive at with an expectation.
+   *
+   * A messaging app that looks like nothing else they use gets read as
+   * unfinished, so this borrows the arrangement everyone already knows: a
+   * dark green header, the same green filling your own messages, and a soft
+   * ground behind the thread so both bubbles sit on something.
+   *
+   * Kept as its own tokens rather than reusing `brand`. They are close, and
+   * they answer different questions — `brand` is this company's green and
+   * follows any rebrand, while these describe a conversation and should not
+   * move when a logo does.
+   */
+  chatHeader: "#0b3d2c",
+  chatHeaderText: "#ffffff",
+  /** The line under a name: online, or when they were last seen. */
+  chatHeaderMuted: "rgba(255,255,255,0.72)",
+  /** The wallpaper behind the thread. */
+  chatGround: "#ece5dd",
+  /** Your own messages. */
+  chatMine: "#0b3d2c",
+  /** Messages from the other person. Its own token, not `card`: a bubble has
+   *  to separate from the wallpaper, and a card is coloured to sit on the
+   *  page instead. */
+  chatTheirs: "#ffffff",
+  /** A live presence dot, and the tick that matches it. */
+  chatOnline: "#4ade80",
+
   /** The quiet inset panel: help text, empty states, a neutral status pill. */
   subtle: "#eef2f7",
   subtleText: "#475569",
@@ -113,6 +141,16 @@ export const darkColors: Palette = {
   onFillMuted: "rgba(255,255,255,0.78)",
   tickRead: "#8ed8ff",
   tickFailed: "#ffb4a8",
+
+  chatHeader: "#0d2a20",
+  chatHeaderText: "#f1f5f9",
+  chatHeaderMuted: "rgba(241,245,249,0.68)",
+  // Not the light wallpaper darkened — a dark thread wants a ground that is
+  // slightly lifted off the page, so the bubbles read as sitting on it.
+  chatGround: "#0b141a",
+  chatMine: "#15795a",
+  chatTheirs: "#202c33",
+  chatOnline: "#4ade80",
 
   subtle: "#16213a",
   subtleText: "#cbd5e1",

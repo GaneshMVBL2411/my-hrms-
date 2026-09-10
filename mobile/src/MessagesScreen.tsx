@@ -42,11 +42,13 @@ import {
   markThreadRead,
   messageContacts,
   messagesWith,
+  presenceFor,
   messageThreads,
   sendMessage,
   type Contact,
   type Message,
   type MessageThread,
+  type Presence,
   type SessionUser,
 } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
@@ -150,6 +152,7 @@ export function MessagesScreen({
   const inputRef = useRef<TextInput>(null)
   const [sending, setSending] = useState(false)
   const [outgoing, setOutgoing] = useState<Outgoing[]>([])
+  const [presence, setPresence] = useState<Presence | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
   const [acting, setActing] = useState<Message | Outgoing | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -292,6 +295,13 @@ export function MessagesScreen({
     onUnread(rows.reduce((total, t) => total + Number(t.unread || 0), 0))
   }, [onUnread, user.id])
 
+  /** Presence for the person on screen, from the source that already knows. */
+  const refreshPresence = useCallback(async (withId: number) => {
+    if (withId === user.id) return
+    const [row] = await presenceFor([withId]).catch(() => [])
+    setPresence(row ?? null)
+  }, [user.id])
+
   const loadMessages = useCallback(async (withId: number) => {
     setMessages(await messagesWith(withId).catch(() => []))
   }, [])
@@ -303,10 +313,13 @@ export function MessagesScreen({
     const pollInterval = openWith && active ? 2500 : 10000
     const timer = setInterval(() => {
       loadThreads()
-      if (openWith && active) loadMessages(openWith.id)
+      if (openWith && active) {
+        loadMessages(openWith.id)
+        refreshPresence(openWith.id)
+      }
     }, pollInterval)
     return () => clearInterval(timer)
-  }, [loadThreads, loadMessages, openWith, active])
+  }, [loadThreads, loadMessages, refreshPresence, openWith, active])
 
   // Opening a thread is what marks it read — the same thing that happens when
   // someone actually reads it. A failure here is silently ignored: a badge that
@@ -320,6 +333,13 @@ export function MessagesScreen({
   }, [openWith, messages, loadThreads])
 
   async function open(id: number, name: string) {
+    // Seeded from the thread list, which already carries presence, so the
+    // header is right on the first frame instead of blank and then correct.
+    const known = threads?.find((t) => t.user_id === id)
+    setPresence(
+      known ? { user_id: id, last_seen_at: known.last_seen_at, is_online: known.is_online } : null
+    )
+    refreshPresence(id)
     setOpenWith({ id, name })
     setPicking(false)
     setMessages(null)
@@ -695,9 +715,12 @@ export function MessagesScreen({
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.barTitle}>
               {openWith.id === user.id ? `${openWith.name || user.email} (You)` : openWith.name}
             </Text>
-            <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.barSubtitle}>
-              {openWith.id === user.id ? "Message yourself" : "online"}
-            </Text>
+            <View style={styles.presenceRow}>
+              {openWith.id !== user.id && presence?.is_online && <View style={styles.presenceDot} />}
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.barSubtitle}>
+                {openWith.id === user.id ? "Message yourself" : presenceLabel(presence)}
+              </Text>
+            </View>
           </View>
           <TouchableOpacity
             onPress={() => {
@@ -767,6 +790,7 @@ export function MessagesScreen({
             ref={listRef}
             data={visibleMessages}
             keyExtractor={(m) => String(m.id)}
+            style={styles.threadGround}
             contentContainerStyle={styles.thread}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
             refreshControl={
@@ -2247,6 +2271,32 @@ function SheetRow({
   )
 }
 
+/**
+ * What to say under someone's name.
+ *
+ * Nothing at all when there is nothing to say. Somebody who has never opened
+ * the app has no last-seen time, and inventing "offline" for them states a
+ * fact that was never observed — the blank is the honest answer.
+ *
+ * The rest is deliberately vague at the top end. "last seen 3 days ago" is
+ * both more than the reader needs and more than anyone would want published
+ * about them; the point is whether it is worth waiting for a reply.
+ */
+function presenceLabel(presence: Presence | null): string {
+  if (!presence || !presence.last_seen_at) return ""
+  if (presence.is_online) return "online"
+
+  const seen = new Date(presence.last_seen_at)
+  const minutes = Math.floor((Date.now() - seen.getTime()) / 60_000)
+  if (minutes < 1) return "last seen just now"
+  if (minutes < 60) return `last seen ${minutes} minute${minutes === 1 ? "" : "s"} ago`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `last seen ${hours} hour${hours === 1 ? "" : "s"} ago`
+  if (hours < 48) return "last seen yesterday"
+  return "last seen a while ago"
+}
+
 function initials(name: string) {
   return name
     .split(/[\s@.]+/)
@@ -2279,12 +2329,17 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     gap: scale(10),
     paddingHorizontal: scale(16),
     paddingBottom: scale(10),
-    backgroundColor: colors.card,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.chatHeader,
   },
-  barTitle: { fontSize: scale(16), fontWeight: "700", color: colors.text },
-  barSubtitle: { fontSize: scale(11.5), color: "#00a884", fontWeight: "500", marginTop: scale(1) },
+  barTitle: { fontSize: scale(16), fontWeight: "700", color: colors.chatHeaderText },
+  barSubtitle: { fontSize: scale(11.5), color: colors.chatHeaderMuted, fontWeight: "500" },
+  presenceRow: { flexDirection: "row", alignItems: "center", gap: scale(5), marginTop: scale(2) },
+  presenceDot: {
+    width: scale(7),
+    height: scale(7),
+    borderRadius: scale(4),
+    backgroundColor: colors.chatOnline,
+  },
   newBtn: { padding: scale(4) },
 
   person: {
@@ -2332,13 +2387,16 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   unreadText: { color: colors.onFill, fontSize: scale(11), fontWeight: "700" },
 
+  // The list of people keeps the app's own background; only the inside of a
+  // conversation gets the wallpaper, which is what makes it read as a chat.
+  threadGround: { flex: 1, backgroundColor: colors.chatGround },
   thread: { padding: scale(14), gap: scale(8), flexGrow: 1, justifyContent: "flex-end" },
   bubbleRow: { flexDirection: "row", alignItems: "center" },
   left: { justifyContent: "flex-start" },
   right: { justifyContent: "flex-end" },
   bubble: { maxWidth: "80%", borderRadius: scale(16), paddingHorizontal: scale(13), paddingVertical: scale(9) },
-  mine: { backgroundColor: colors.brand, borderBottomRightRadius: scale(4) },
-  theirs: { backgroundColor: colors.card, borderBottomLeftRadius: scale(4), borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  mine: { backgroundColor: colors.chatMine, borderBottomRightRadius: scale(4) },
+  theirs: { backgroundColor: colors.chatTheirs, borderBottomLeftRadius: scale(4) },
   bubbleText: { fontSize: scale(14), lineHeight: scale(20), color: colors.text },
   mineText: { color: colors.onFill },
   goneBubble: { backgroundColor: colors.subtle, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },

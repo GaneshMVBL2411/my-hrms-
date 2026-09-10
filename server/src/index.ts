@@ -511,6 +511,11 @@ const CALLABLE = new Set([
   // Internal messaging. message_contacts exists because `users` is not readable
   // through the query endpoint and employee_directory carries no user_id.
   "message_threads", "message_contacts",
+  // Presence. Both are narrow by construction rather than by permission:
+  // touch_presence takes no arguments and can only stamp whoever is asking,
+  // and presence_for returns a last-seen time and nothing else about a user,
+  // scoped to the caller's own company.
+  "touch_presence", "presence_for",
   "deactivate_employee", "set_employee_role", "upsert_company_settings",
   "log_application_audit",
   // Resolves the caller's own employee id from the session context and takes no

@@ -316,6 +316,35 @@ export interface MessageThread {
   last_body: string
   last_at: string
   unread: number
+  /** Null for someone who has never opened the app. */
+  last_seen_at: string | null
+  is_online: boolean
+}
+
+/** When someone was last seen, and whether that counts as now. */
+export interface Presence {
+  user_id: number
+  last_seen_at: string | null
+  is_online: boolean
+}
+
+/**
+ * Says this app is open, and returns the instant the server recorded.
+ *
+ * Sent on a timer while the app is in the foreground and once more whenever it
+ * comes back to it. Stopping is not signalled and does not need to be — the
+ * server treats presence as a time rather than a flag, so simply not calling
+ * this is what makes someone go offline. That is the behaviour that survives
+ * a killed app, a flat battery and a tunnel.
+ */
+export async function touchPresence(): Promise<void> {
+  await rpc<string>("touch_presence")
+}
+
+/** Presence for a handful of people, when a thread list is not already carrying it. */
+export async function presenceFor(userIds: number[]): Promise<Presence[]> {
+  if (userIds.length === 0) return []
+  return rpc<Presence[]>("presence_for", { p_user_ids: userIds })
 }
 
 export interface Message {

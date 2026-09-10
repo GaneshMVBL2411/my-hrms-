@@ -54,7 +54,20 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** Every `supabase.rpc("name")` the clients actually call. */
+/**
+ * Every RPC the clients actually call.
+ *
+ * Two shapes, because the two clients call differently: the web app goes
+ * through the Supabase shim as `supabase.rpc("name")`, and the native app has
+ * its own bare `rpc("name")` helper. Matching only the first made every
+ * mobile-only function look like a dead allow-list entry, which Test 3 then
+ * reported as an unused grant — a false failure that invites deleting a live
+ * entry to make the suite green.
+ *
+ * `rpc` matches both, since the boundary falls after the dot as well. The
+ * required quote is what keeps the helper's own definition out: it is declared
+ * as `rpc<T>(fn: string)`, not called with a literal.
+ */
 function calledFunctions(): Map<string, string[]> {
   const found = new Map<string, string[]>()
   for (const dir of ["frontend/src", "mobile/src"]) {
@@ -65,7 +78,7 @@ function calledFunctions(): Map<string, string[]> {
       continue // mobile/ is optional; not every checkout has it
     }
     for (const file of files) {
-      for (const m of readFileSync(file, "utf8").matchAll(/\.rpc\(\s*"([a-z_][a-z0-9_]*)"/g)) {
+      for (const m of readFileSync(file, "utf8").matchAll(/\brpc\s*(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"/g)) {
         const where = found.get(m[1]!) ?? []
         where.push(file.slice(rootDir.length + 1).replace(/\\/g, "/"))
         found.set(m[1]!, where)

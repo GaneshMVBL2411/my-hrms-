@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, AppState, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
@@ -10,7 +10,7 @@ import { ProfileScreen } from "./src/ProfileScreen"
 import { BrowseScreen } from "./src/BrowseScreen"
 import { PortalScreen } from "./src/PortalScreen"
 import { MessagesScreen } from "./src/MessagesScreen"
-import { me, setUnauthorizedHandler, type SessionUser } from "./src/api"
+import { me, setUnauthorizedHandler, touchPresence, type SessionUser } from "./src/api"
 import { scale, FONT_SCALE_CAP } from "./src/ui"
 import { ThemeProvider, useStyles, useTheme, type Palette } from "./src/theme"
 
@@ -45,6 +45,14 @@ import { ThemeProvider, useStyles, useTheme, type Palette } from "./src/theme"
  * read through a hook rather than imported: a screen that imported its colours
  * would keep whichever theme was current when its file first loaded.
  */
+/**
+ * How often the app says it is open.
+ *
+ * Comfortably inside the server's 75-second window, so one missed beat does
+ * not flicker somebody offline and back.
+ */
+const PRESENCE_INTERVAL_MS = 45_000
+
 type Tab = "home" | "punch" | "browse" | "chat" | "portal"
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -117,6 +125,44 @@ function Shell() {
     })
     return () => sub.remove()
   }, [])
+
+  /**
+   * Tells the server this app is open, for as long as it is.
+   *
+   * Here rather than in the chat screen because that is what presence means:
+   * someone is reachable when the app is open, not when they happen to be
+   * looking at a conversation. Putting it in Messages would have shown people
+   * as offline while they were reading their attendance.
+   *
+   * There is deliberately no "going offline" call. The server stores the last
+   * time it heard, not a flag, so stopping the beat is the whole mechanism —
+   * which means a killed app, a flat battery and a tunnel all resolve the same
+   * correct way, without any of them getting the chance to run cleanup code.
+   *
+   * Beating pauses in the background: a phone in a pocket is not somewhere a
+   * message will be read, and saying otherwise is the thing being fixed.
+   */
+  useEffect(() => {
+    if (!user) return
+
+    let live = true
+    const beat = () => {
+      if (live && AppState.currentState === "active") touchPresence().catch(() => undefined)
+    }
+
+    beat()
+    const timer = setInterval(beat, PRESENCE_INTERVAL_MS)
+    // Foreground again, and say so at once rather than up to a minute later.
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") beat()
+    })
+
+    return () => {
+      live = false
+      clearInterval(timer)
+      sub.remove()
+    }
+  }, [user])
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
