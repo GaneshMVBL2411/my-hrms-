@@ -16,7 +16,17 @@ export type Role =
 export interface AuthUser {
   id: number
   email: string
+  /**
+   * What this person may do. For a company-defined role this is the built-in
+   * it is based on, which is what every permission check here compares
+   * against — a "Recruiter" based on hr_admin reads as hr_admin.
+   */
   role: Role
+  /**
+   * What the role is called, for display. Equal to `role` for a built-in and
+   * the company's own name otherwise. Never compare against it.
+   */
+  roleLabel: string
   fullName: string
   employeeId: number | null
   photoUrl: string | null

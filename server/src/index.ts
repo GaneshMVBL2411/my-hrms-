@@ -521,6 +521,10 @@ const CALLABLE = new Set([
   // scoped to the caller's own company.
   "touch_presence", "presence_for",
   "deactivate_employee", "set_employee_role", "upsert_company_settings",
+  // Company-defined roles. Both re-check app_is_hr() themselves; the create
+  // refuses any base outside what HR may already assign, so this is a way to
+  // name a permission level, not to mint one.
+  "create_company_role", "list_assignable_roles",
   "log_application_audit",
   // Resolves the caller's own employee id from the session context and takes no
   // arguments, so it can only ever answer for whoever is asking — the same value

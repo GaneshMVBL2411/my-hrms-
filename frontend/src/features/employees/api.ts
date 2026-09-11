@@ -137,6 +137,42 @@ export async function uploadEmployeePhoto(id: number, file: File): Promise<{ pho
   return { photo_url: photoUrl }
 }
 
+/**
+ * A role HR may assign: one of the built-ins, or one this company defined.
+ *
+ * `baseRole` is what a company-defined role grants — the built-in whose
+ * permissions it carries. Null for the built-ins themselves, which *are* the
+ * permission level.
+ */
+export interface AssignableRole {
+  id: number
+  name: string
+  description: string | null
+  baseRole: "hr_admin" | "project_manager" | "team_lead" | "employee" | null
+  isCustom: boolean
+}
+
+export async function listAssignableRoles(): Promise<AssignableRole[]> {
+  return unwrap<AssignableRole[]>(await supabase.rpc("list_assignable_roles"))
+}
+
+/**
+ * Defines a role for this company.
+ *
+ * The name is what people will see; the base is what the database will
+ * enforce. The server refuses a base HR could not already assign directly and
+ * a name that collides with a built-in, so those are not re-checked here —
+ * the message it sends back is the one worth showing.
+ */
+export async function createCompanyRole(
+  name: string,
+  baseRole: NonNullable<AssignableRole["baseRole"]>
+): Promise<AssignableRole> {
+  return unwrap<AssignableRole>(
+    await supabase.rpc("create_company_role", { p_name: name, p_base_role: baseRole })
+  )
+}
+
 export async function listDepartments(): Promise<Department[]> {
   return unwrap<Department[]>(await supabase.from("departments").select("id, name, description").order("name"))
 }

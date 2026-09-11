@@ -76,7 +76,13 @@ function safeParse(text: string) {
 export interface SessionUser {
   id: number
   email: string
+  /**
+   * What this person may do. For a company-defined role it is the built-in it
+   * is based on, which is what every check in this app compares against.
+   */
   role: string
+  /** What the role is called. Present on /auth/me; absent on the login reply. */
+  role_label?: string
   employeeId: number | null
 }
 

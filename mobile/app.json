@@ -6,6 +6,10 @@
     "orientation": "portrait",
     "scheme": "hrms",
     "userInterfaceStyle": "automatic",
+    "androidStatusBar": {
+      "backgroundColor": "#00000000",
+      "translucent": true
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.whhoohhpath.hrms",
@@ -75,7 +79,7 @@
     "extra": {
       "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",
       "//2": "must be a host the device can resolve — the tunnel, or a LAN IP.",
-      "apiUrl": "http://10.0.5.122:5173/api",
+      "apiUrl": "http://10.0.5.123:5173/api",
       "eas": {
         "projectId": "30ae649b-584e-41ca-9131-ec64907b12b8"
       }

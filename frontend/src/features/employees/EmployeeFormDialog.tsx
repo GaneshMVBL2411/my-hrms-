@@ -27,20 +27,13 @@ import {
 } from "@/features/employees/api"
 import type { Employee } from "@/features/employees/types"
 import { errorMessage } from "@/lib/errors"
+import { RolePicker } from "@/features/employees/RolePicker"
 
 /**
  * Radix refuses an empty SelectItem value (it reserves "" for the placeholder),
  * so "nobody" needs a stand-in that is converted back to null on save.
  */
 const NONE = "none"
-
-const roles = [
-  { value: "founder", label: "Founder" },
-  { value: "hr_admin", label: "HR Admin" },
-  { value: "project_manager", label: "Project Manager" },
-  { value: "team_lead", label: "Team Lead" },
-  { value: "employee", label: "Employee" },
-]
 
 const statuses = [
   { value: "active", label: "Active" },
@@ -342,22 +335,15 @@ export function EmployeeFormDialog({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Role</Label>
+              {/* Lists what the server says this person may assign, and lets
+                  them define a new one by typing it. The list used to be
+                  hardcoded here, which is also why it offered Founder to HR
+                  admins who are refused it on submit. */}
               <Controller
                 control={control}
                 name="role"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roles.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>
-                          {r.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <RolePicker value={field.value} onChange={field.onChange} disabled={isSubmitting} />
                 )}
               />
             </div>

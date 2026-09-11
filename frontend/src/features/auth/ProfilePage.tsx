@@ -64,7 +64,7 @@ export function ProfilePage() {
             <h2 className="text-lg font-semibold text-foreground">{user?.fullName}</h2>
             <p className="text-sm text-muted-foreground">{user?.email}</p>
             <Badge variant="outline" className="mt-2 capitalize font-medium">
-              {user?.role.replace("_", " ")}
+              {(user?.roleLabel ?? user?.role)?.replace("_", " ")}
             </Badge>
           </div>
         </CardContent>

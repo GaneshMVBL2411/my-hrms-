@@ -143,7 +143,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               </Avatar>
               <div className="hidden flex-col items-start text-left sm:flex">
                 <span className="text-xs font-semibold text-foreground leading-none">{user?.fullName}</span>
-                <span className="text-[10px] text-muted-foreground capitalize mt-0.5">{user?.role?.replace("_", " ")}</span>
+                <span className="text-[10px] text-muted-foreground capitalize mt-0.5">{(user?.roleLabel ?? user?.role)?.replace("_", " ")}</span>
               </div>
             </Button>
           </DropdownMenuTrigger>
@@ -153,7 +153,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               <div className="mt-1.5 flex items-center gap-1.5">
                 <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary capitalize">
-                  {user?.role?.replace("_", " ")}
+                  {(user?.roleLabel ?? user?.role)?.replace("_", " ")}
                 </span>
                 {user?.isSuperAdmin && (
                   <span className="inline-flex items-center rounded-md bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">

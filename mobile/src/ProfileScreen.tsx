@@ -73,7 +73,7 @@ export function ProfileScreen({
   const name = profile?.full_name ?? user.email
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen" statusBarTranslucent>
       <View style={styles.root}>
         <View style={[styles.bar, { paddingTop: insets.top + scale(8) }]}>
           <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.barTitle}>
@@ -99,7 +99,7 @@ export function ProfileScreen({
             </Text>
             <View style={styles.rolePill}>
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.roleText}>
-                {user.role.replace(/_/g, " ")}
+                {(user.role_label ?? user.role).replace(/_/g, " ")}
               </Text>
             </View>
           </View>
