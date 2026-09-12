@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { WebView } from "react-native-webview"
-import Constants from "expo-constants"
-import { getToken } from "./api"
+import { getToken, PORTAL_URL } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette, type ThemeMode } from "./theme"
 
@@ -33,9 +32,9 @@ const Web = WebView as unknown as React.ComponentType<Record<string, unknown>>
  * the key the web app reads (`hrms_token`, see frontend/src/lib/supabase.ts)
  * before the first line of app code runs.
  */
-const PORTAL_URL: string = (
-  (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:3001/api"
-).replace(/\/api\/?$/, "")
+// The same resolved host the API uses. See resolveApiUrl in api.ts for why
+// this is derived from the dev server rather than read from app.json.
+
 
 /**
  * Tells the portal which theme the app is in.
@@ -155,7 +154,7 @@ export function PortalScreen({ active, userId }: { active: boolean; userId: numb
         <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.error}>Could not reach the portal.</Text>
         <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.hint}>{PORTAL_URL}</Text>
         <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.hint}>
-          Check the tunnel is up and that apiUrl in app.json points at it.
+          Check the web dev server is running on the machine serving this app.
         </Text>
         <TouchableOpacity
           style={styles.retry}

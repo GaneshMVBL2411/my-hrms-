@@ -77,9 +77,12 @@
       "expo-asset"
     ],
     "extra": {
-      "//": "The HRMS API. A phone cannot reach the laptop's localhost, so this",
-      "//2": "must be a host the device can resolve — the tunnel, or a LAN IP.",
-      "apiUrl": "http://10.0.5.123:5173/api",
+      "//": "The HRMS API. In development only the PORT and PATH here are used:",
+      "//2": "the host is taken from wherever Metro is serving (see resolveApiUrl",
+      "//3": "in src/api.ts), so a changed LAN address no longer breaks sign-in.",
+      "//4": "A production build has no Metro and uses this value verbatim, so",
+      "//5": "there it must be a real hostname, not a LAN IP.",
+      "apiUrl": "http://192.168.43.117:5173/api",
       "eas": {
         "projectId": "30ae649b-584e-41ca-9131-ec64907b12b8"
       }

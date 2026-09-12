@@ -6,11 +6,54 @@ import * as SecureStore from "expo-secure-store"
  *
  * Same server the web app talks to — there is no mobile backend. The one thing
  * that differs is the base URL: a phone cannot reach the laptop's localhost, so
- * `apiUrl` in app.json has to name a host the device can actually resolve, and
- * a wrong value here looks exactly like the server being down.
+ * the host has to be one the device can actually resolve, and a wrong value
+ * here looks exactly like the server being down.
+ *
+ * In development the host is not configured, it is *derived*. The phone
+ * already knows which machine it is talking to — it is the one serving the
+ * bundle — and the API runs on that same machine. `hostUri` is what Expo
+ * hands the dev client for that purpose, so the API address follows Metro's
+ * automatically. This replaced a LAN address written into app.json, which
+ * went stale every time the laptop took a new DHCP lease or joined a hotspot:
+ * four times in a week, each one a "Failed to connect" that read as a server
+ * outage and was really a config file quietly pointing at yesterday.
+ *
+ * A production build has no dev server and no hostUri, and falls through to
+ * the configured URL — which is a real hostname there, not a LAN address, and
+ * does not have the problem.
  */
-const API_URL: string =
-  (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:3001"
+function resolveApiUrl(): string {
+  const configured = (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? "http://localhost:3001"
+
+  // "192.168.43.117:8081" — the machine and port Metro is serving from.
+  const hostUri = Constants.expoConfig?.hostUri
+  if (!hostUri) return configured
+
+  const host = hostUri.split(":")[0]
+  if (!host || host === "localhost" || host === "127.0.0.1") return configured
+
+  // Keep whatever port and path the configured URL uses; only the host is
+  // the part that moves. That is what makes this a correction rather than a
+  // second place the API address is spelled out.
+  try {
+    const url = new URL(configured)
+    url.hostname = host
+    return url.toString().replace(/\/$/, "")
+  } catch {
+    return configured
+  }
+}
+
+const API_URL: string = resolveApiUrl()
+
+/**
+ * The portal's address, for the WebView: the API's origin without its path.
+ *
+ * Exported so the Portal tab follows the same resolved host rather than
+ * reading app.json for itself — which is how it ended up pointing at a stale
+ * address while this file had already corrected it.
+ */
+export const PORTAL_URL: string = API_URL.replace(/\/api\/?$/, "")
 
 const TOKEN_KEY = "hrms.session.token"
 
