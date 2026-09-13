@@ -73,11 +73,19 @@ export function TaskDetailDialog({
     enabled: open && !!taskId,
   })
 
+  // Reset the manual progress field when a different task is opened or the
+  // task's own progress changes — and only then. Depending on `task` itself
+  // would also re-run on every refetch that touched an unrelated field,
+  // clobbering a value someone was in the middle of typing. Reading the two
+  // fields out first is what lets the effect depend on exactly what it uses.
+  // (`taskId` is the prop asked for; these are what actually arrived.)
+  const loadedId = task?.id
+  const loadedProgress = task?.progress
   useEffect(() => {
-    if (task) {
-      setManualProgress(String(task.progress ?? 0))
+    if (loadedId !== undefined) {
+      setManualProgress(String(loadedProgress ?? 0))
     }
-  }, [task?.id, task?.progress])
+  }, [loadedId, loadedProgress])
 
   const { data: projects } = useQuery({
     queryKey: ["projects", "all"],
