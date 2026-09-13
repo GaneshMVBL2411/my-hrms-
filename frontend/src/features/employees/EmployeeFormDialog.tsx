@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
+  createDepartment,
+  createDesignation,
   createEmployee,
   listDepartments,
   listDesignations,
@@ -28,6 +30,9 @@ import {
 import type { Employee } from "@/features/employees/types"
 import { errorMessage } from "@/lib/errors"
 import { RolePicker } from "@/features/employees/RolePicker"
+import { DesignationPicker } from "@/features/employees/DesignationPicker"
+import { DepartmentPicker } from "@/features/employees/DepartmentPicker"
+import { ReportingManagerPicker } from "@/features/employees/ReportingManagerPicker"
 
 /**
  * Radix refuses an empty SelectItem value (it reserves "" for the placeholder),
@@ -110,8 +115,13 @@ export function EmployeeFormDialog({
     defaultValues: { status: "active", role: "employee" },
   })
 
+  const [pendingDepartmentName, setPendingDepartmentName] = useState("")
+  const [pendingDesignationTitle, setPendingDesignationTitle] = useState("")
+
   useEffect(() => {
     if (!open) return
+    setPendingDepartmentName("")
+    setPendingDesignationTitle("")
     reset({
       email: employee?.email ?? "",
       firstName: employee?.firstName ?? "",
@@ -181,12 +191,52 @@ export function EmployeeFormDialog({
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit((values) => {
+          onSubmit={handleSubmit(async (values) => {
             if (!isEdit && (!values.password || values.password.length < 8)) {
               setError("password", { message: "Minimum 8 characters" })
               return
             }
-            mutation.mutate(values)
+
+            let finalValues = { ...values }
+            if (pendingDepartmentName.trim()) {
+              try {
+                const trimmed = pendingDepartmentName.trim()
+                const existing = departments.find(
+                  (d) => d.name.toLowerCase() === trimmed.toLowerCase()
+                )
+                if (existing) {
+                  finalValues.departmentId = String(existing.id)
+                } else {
+                  const created = await createDepartment({ name: trimmed })
+                  await queryClient.invalidateQueries({ queryKey: ["departments"] })
+                  finalValues.departmentId = String(created.id)
+                }
+              } catch (err) {
+                toast.error(errorMessage(err, "Failed to save department"))
+                return
+              }
+            }
+
+            if (pendingDesignationTitle.trim()) {
+              try {
+                const trimmed = pendingDesignationTitle.trim()
+                const existing = designations.find(
+                  (d) => d.title.toLowerCase() === trimmed.toLowerCase()
+                )
+                if (existing) {
+                  finalValues.designationId = String(existing.id)
+                } else {
+                  const created = await createDesignation({ title: trimmed })
+                  await queryClient.invalidateQueries({ queryKey: ["designations"] })
+                  finalValues.designationId = String(created.id)
+                }
+              } catch (err) {
+                toast.error(errorMessage(err, "Failed to save designation"))
+                return
+              }
+            }
+
+            mutation.mutate(finalValues)
           })}
           className="space-y-4"
           autoComplete="off"
@@ -261,75 +311,42 @@ export function EmployeeFormDialog({
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Department</Label>
-              <Controller
-                control={control}
-                name="departmentId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((d) => (
-                        <SelectItem key={d.id} value={String(d.id)}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Designation</Label>
-              <Controller
-                control={control}
-                name="designationId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select designation" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {designations.map((d) => (
-                        <SelectItem key={d.id} value={String(d.id)}>
-                          {d.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reporting manager</Label>
-              <Controller
-                control={control}
-                name="reportingManagerId"
-                render={({ field }) => (
-                  <Select value={field.value ?? NONE} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="No reporting manager" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>No reporting manager</SelectItem>
-                      {managerOptions?.items
-                        // Nobody reports to themselves; offering it would create
-                        // a cycle the org chart cannot draw.
-                        .filter((m) => m.id !== employee?.id)
-                        .map((m) => (
-                          <SelectItem key={m.id} value={String(m.id)}>
-                            {m.fullName}
-                            {m.designationTitle ? ` — ${m.designationTitle}` : ""}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+            <Controller
+              control={control}
+              name="departmentId"
+              render={({ field }) => (
+                <DepartmentPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  departments={departments}
+                  onPendingTitleChange={setPendingDepartmentName}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="designationId"
+              render={({ field }) => (
+                <DesignationPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  designations={designations}
+                  onPendingTitleChange={setPendingDesignationTitle}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="reportingManagerId"
+              render={({ field }) => (
+                <ReportingManagerPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  managers={managerOptions?.items ?? []}
+                  currentEmployeeId={employee?.id}
+                />
+              )}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
