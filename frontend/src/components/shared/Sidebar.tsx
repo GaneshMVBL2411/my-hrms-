@@ -14,8 +14,8 @@ import { listThreads } from "@/features/messages/api"
  */
 const MODULE_PATHS = new Set([
   "employees", "attendance", "leaves", "projects", "tasks", "payroll",
-  "assets", "recruitment", "documents", "calendar", "announcements",
-  "reports", "settings",
+  "company_bank", "company-bank", "assets", "recruitment", "documents",
+  "calendar", "announcements", "messages", "reports", "settings",
 ])
 
 const COLLAPSE_KEY = "hrms_sidebar_collapsed"
@@ -77,14 +77,24 @@ export function Sidebar({
   const unread = threads?.reduce((total, t) => total + t.unread, 0) ?? 0
 
   const visibleItems = navItems.filter((item) => {
-    if (item.roles && !(user && item.roles.includes(user.role))) return false
+    if (!user) return false
 
-    // Modules the company has not bought are hidden. This is presentation only —
-    // row level security refuses the data regardless — but a visible link to an
-    // empty page reads as a broken product rather than one not subscribed to.
+    // 1. Super Admin has unrestricted access to all side options
+    if (user.isSuperAdmin) return true
+
+    // 2. Role-based check
+    if (item.roles && !item.roles.includes(user.role)) return false
+
+    // 3. Module gating for companies
     const moduleKey = item.path.replace(/^\//, "")
-    const gated = MODULE_PATHS.has(moduleKey)
-    if (gated && user?.modules && !user.modules.includes(moduleKey)) return false
+    const normalizedKey = moduleKey.replace(/-/g, "_")
+    const gated = MODULE_PATHS.has(moduleKey) || MODULE_PATHS.has(normalizedKey)
+
+    // Only gate if explicit modules are configured for this company
+    if (gated && Array.isArray(user.modules) && user.modules.length > 0) {
+      const isAllowed = user.modules.includes(moduleKey) || user.modules.includes(normalizedKey)
+      if (!isAllowed) return false
+    }
 
     return true
   })

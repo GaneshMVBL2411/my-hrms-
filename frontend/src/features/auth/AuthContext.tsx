@@ -8,6 +8,7 @@ interface AuthContextValue {
   isLoading: boolean
   signIn: (email: string, password: string, rememberMe: boolean) => Promise<void>
   signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -15,6 +16,15 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  const refreshUser = async () => {
+    try {
+      const profile = await authApi.fetchCurrentUser()
+      setUser(profile)
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -61,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, isLoading, signIn, signOut, refreshUser }}>{children}</AuthContext.Provider>
   )
 }
 

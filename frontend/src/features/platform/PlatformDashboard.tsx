@@ -445,9 +445,10 @@ export function PlatformDashboard() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
+                            e.preventDefault()
                             setModulesCompany(c)
                           }}
-                          className="group/btn inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-muted/40 px-2 py-1 text-xs transition-colors hover:bg-muted hover:border-primary/40"
+                          className="group/btn inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-muted/40 px-2 py-1 text-xs transition-colors hover:bg-muted hover:border-primary/40 cursor-pointer"
                           title="Click to configure modules"
                         >
                           <Layers className="size-3 text-muted-foreground group-hover/btn:text-primary" />
@@ -525,7 +526,11 @@ export function PlatformDashboard() {
                             variant="ghost"
                             className="rounded-xl h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
                             title="Configure module access"
-                            onClick={() => setModulesCompany(c)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              setModulesCompany(c)
+                            }}
                           >
                             <Layers className="size-3.5" />
                             <span className="hidden xl:inline ml-1">Modules</span>
@@ -618,7 +623,15 @@ export function PlatformDashboard() {
                       <p className="text-[10px] text-muted-foreground">Staff</p>
                       <p className="font-semibold text-foreground">{c.employees} / {c.employeeLimit ?? "∞"}</p>
                     </div>
-                    <div>
+                    <div
+                      className="cursor-pointer hover:bg-muted/40 p-1 rounded-lg transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setModulesCompany(c)
+                      }}
+                      title="Click to configure modules"
+                    >
                       <p className="text-[10px] text-muted-foreground">Modules</p>
                       <p className="font-semibold text-foreground">{c.modules} active</p>
                     </div>
@@ -630,7 +643,11 @@ export function PlatformDashboard() {
                         size="sm"
                         variant="ghost"
                         className="rounded-xl h-8 px-2 text-xs"
-                        onClick={() => setSubscriptionCompany(c)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          setSubscriptionCompany(c)
+                        }}
                       >
                         Billing
                       </Button>
@@ -638,7 +655,11 @@ export function PlatformDashboard() {
                         size="sm"
                         variant="ghost"
                         className="rounded-xl h-8 px-2 text-xs"
-                        onClick={() => setModulesCompany(c)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          setModulesCompany(c)
+                        }}
                       >
                         Modules
                       </Button>
@@ -701,8 +722,14 @@ export function PlatformDashboard() {
           if (!open) setDetailCompany(null)
         }}
         onEnter={(comp) => enter.mutate({ id: comp.id, name: comp.name })}
-        onManageBilling={(comp) => setSubscriptionCompany(comp)}
-        onManageModules={(comp) => setModulesCompany(comp)}
+        onManageBilling={(comp) => {
+          setDetailCompany(null)
+          setTimeout(() => setSubscriptionCompany(comp), 120)
+        }}
+        onManageModules={(comp) => {
+          setDetailCompany(null)
+          setTimeout(() => setModulesCompany(comp), 120)
+        }}
         entering={enter.isPending}
       />
     </div>

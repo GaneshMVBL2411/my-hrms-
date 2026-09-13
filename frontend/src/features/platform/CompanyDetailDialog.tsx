@@ -287,26 +287,29 @@ export function CompanyDetailDialog({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 text-xs text-primary px-2"
-                onClick={() => {
-                  onOpenChange(false)
-                  onManageModules(company)
-                }}
+                className="h-6 text-xs text-primary px-2 hover:bg-primary/10"
+                onClick={() => onManageModules(company)}
               >
                 Configure
               </Button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div
+              role="button"
+              tabIndex={0}
+              title="Click to configure modules"
+              onClick={() => onManageModules(company)}
+              className="flex flex-wrap gap-1.5 cursor-pointer"
+            >
               {ALL_MODULES.map((m) => {
                 const isEnabled = company.enabledModules?.includes(m.id)
                 return (
                   <span
                     key={m.id}
-                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-medium border ${
+                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-medium border transition-colors ${
                       isEnabled
-                        ? "bg-primary/10 text-primary border-primary/25 font-semibold"
-                        : "bg-muted/40 text-muted-foreground border-border/50 line-through opacity-60"
+                        ? "bg-primary/10 text-primary border-primary/25 font-semibold hover:bg-primary/20"
+                        : "bg-muted/40 text-muted-foreground border-border/50 line-through opacity-60 hover:opacity-100"
                     }`}
                   >
                     {m.name}
@@ -325,10 +328,7 @@ export function CompanyDetailDialog({
               variant="outline"
               size="sm"
               className="rounded-xl h-8 px-3 text-xs gap-1.5"
-              onClick={() => {
-                onOpenChange(false)
-                onManageBilling(company)
-              }}
+              onClick={() => onManageBilling(company)}
             >
               <CreditCard className="size-3.5" />
               <span>Billing</span>
@@ -339,10 +339,7 @@ export function CompanyDetailDialog({
               variant="outline"
               size="sm"
               className="rounded-xl h-8 px-3 text-xs gap-1.5"
-              onClick={() => {
-                onOpenChange(false)
-                onManageModules(company)
-              }}
+              onClick={() => onManageModules(company)}
             >
               <Layers className="size-3.5" />
               <span>Modules</span>

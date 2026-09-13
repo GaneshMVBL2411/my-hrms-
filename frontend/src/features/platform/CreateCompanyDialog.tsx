@@ -508,7 +508,7 @@ Client HR can log in to setup bank details and add team members.`
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
-                        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        {showPassword ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                       </button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">

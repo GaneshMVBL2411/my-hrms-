@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { updateCompanyModules, type CompanyOverview } from "@/features/platform/api"
 import { errorMessage } from "@/lib/errors"
+import { useAuth } from "@/features/auth/AuthContext"
 
 const ALL_MODULES = [
   { id: "employees", name: "Employees & Directory", desc: "Staff records, org hierarchy and directory" },
@@ -42,6 +43,7 @@ export function ManageModulesDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { refreshUser } = useAuth()
   const queryClient = useQueryClient()
   const [selectedModules, setSelectedModules] = useState<string[]>([])
 
@@ -62,9 +64,11 @@ export function ManageModulesDialog({
       if (!company) throw new Error("No company selected")
       return updateCompanyModules(company.id, selectedModules)
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(`Module permissions updated for ${company?.name}`)
       queryClient.invalidateQueries({ queryKey: ["platform"] })
+      queryClient.invalidateQueries({ queryKey: ["companies"] })
+      await refreshUser()
       onOpenChange(false)
     },
     onError: (err) => {
@@ -122,24 +126,35 @@ export function ManageModulesDialog({
             {ALL_MODULES.map((m) => {
               const isChecked = selectedModules.includes(m.id)
               return (
-                <label
+                <div
                   key={m.id}
-                  className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleModule(m.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      toggleModule(m.id)
+                    }
+                  }}
+                  className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer select-none active:scale-[0.99] ${
                     isChecked
-                      ? "border-primary/40 bg-primary/5"
-                      : "border-border bg-card/60 hover:bg-muted/30"
+                      ? "border-primary bg-primary/10 shadow-2xs font-semibold"
+                      : "border-border bg-card hover:bg-muted/30"
                   }`}
                 >
                   <Checkbox
                     checked={isChecked}
-                    onCheckedChange={() => toggleModule(m.id)}
-                    className="mt-0.5"
+                    onCheckedChange={() => {
+                      // Handled by card onClick to avoid double-toggle
+                    }}
+                    className="mt-0.5 pointer-events-none"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-foreground truncate">{m.name}</p>
                     <p className="text-[10px] text-muted-foreground line-clamp-1">{m.desc}</p>
                   </div>
-                </label>
+                </div>
               )
             })}
           </div>
