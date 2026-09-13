@@ -31,6 +31,10 @@ export function CapturePunchDialog({
   const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // Bumped by "Try again". Re-running the effect is what re-asks the browser,
+  // and a permission granted in the address bar only takes effect on the next
+  // ask — closing and reopening the dialog was the only way to do that before.
+  const [attempt, setAttempt] = useState(0)
 
   const stop = useCallback(() => {
     // Every track, explicitly. Dropping the reference does not turn the camera
@@ -42,6 +46,8 @@ export function CapturePunchDialog({
 
   useEffect(() => {
     let cancelled = false
+    setError(null)
+    setReady(false)
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("This browser will not give the page a camera. Try Chrome, Edge or Safari over HTTPS.")
@@ -65,12 +71,16 @@ export function CapturePunchDialog({
         if (cancelled) return
         // Refusal and absence read very differently to someone standing there,
         // so they are not collapsed into one message.
+        // The two places a block lives are easy to confuse, and only one of
+        // them is visible from the page, so both are named.
         setError(
           e.name === "NotAllowedError"
-            ? "The camera was blocked. Allow it in the address bar, then try again."
+            ? "The camera is blocked for this site. Click the camera icon in the address bar and choose Allow — or, if there is no icon, turn on camera access for your browser in the system's privacy settings. Then try again."
             : e.name === "NotFoundError"
               ? "No camera was found on this device."
-              : "The camera could not be started."
+              : e.name === "NotReadableError"
+                ? "Another app is using the camera. Close it, then try again."
+                : "The camera could not be started."
         )
       })
 
@@ -78,7 +88,7 @@ export function CapturePunchDialog({
       cancelled = true
       stop()
     }
-  }, [stop])
+  }, [stop, attempt])
 
   const capture = () => {
     const video = videoRef.current
@@ -113,24 +123,31 @@ export function CapturePunchDialog({
         </DialogHeader>
 
         <div className="relative mt-2 aspect-square overflow-hidden rounded-xl border border-border bg-muted">
-          {error ? (
-            <div className="flex size-full flex-col items-center justify-center gap-2 p-6 text-center">
+          {/* The video stays mounted even while an error is showing. On a
+              retry the camera can answer before React has re-rendered, and a
+              stream that arrives to an unmounted element has nowhere to go —
+              the request succeeds and the preview stays blank. */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            // Mirrored, because an unmirrored self-view is disconcerting —
+            // people expect a mirror when looking at themselves. Only the
+            // preview is flipped; the captured frame is drawn from the
+            // source and is the right way round.
+            className="size-full -scale-x-100 object-cover"
+            onLoadedMetadata={() => setReady(true)}
+          />
+          {error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted p-6 text-center">
               <X className="size-6 text-danger" />
-              <p className="text-xs text-muted-foreground">{error}</p>
+              <p className="max-w-xs text-xs text-muted-foreground">{error}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+                <RefreshCw className="mr-1.5 size-3.5" />
+                Try again
+              </Button>
             </div>
-          ) : (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              // Mirrored, because an unmirrored self-view is disconcerting —
-              // people expect a mirror when looking at themselves. Only the
-              // preview is flipped; the captured frame is drawn from the
-              // source and is the right way round.
-              className="size-full -scale-x-100 object-cover"
-              onLoadedMetadata={() => setReady(true)}
-            />
           )}
         </div>
 
