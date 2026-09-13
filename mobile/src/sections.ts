@@ -243,7 +243,8 @@ export const SECTIONS: SectionDef[] = [
     empty: "Nothing assigned.",
     table: "task_directory",
     query: {
-      columns: "id, title, project_name, assignee_name, priority, due_date, status, progress",
+      columns:
+        "id, title, description, project_id, project_name, project_progress, assigned_to, assignee_name, priority, due_date, status, progress, creator_name, creator_role, created_at",
       order: [{ column: "due_date", ascending: true }],
       limit: 100,
     },
@@ -251,7 +252,7 @@ export const SECTIONS: SectionDef[] = [
       title: r.title,
       subtitle: [r.project_name, r.assignee_name].filter(Boolean).join(" · "),
       meta: r.due_date ? `due ${shortDate(r.due_date)}` : "",
-      badge: String(r.status).replace("_", " "),
+      badge: `${r.progress ?? 0}% · ${String(r.status).replace("_", " ")}`,
       tone: statusTone[r.status] ?? "neutral",
     }),
     // One step along the flow, not a free choice of status. A task that is
@@ -460,7 +461,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     key: "letters",
-    motion: "flip",
+    motion: "tick",
     icon: "ribbon-outline",
     tint: "#d97706",
     title: "HR Letters",

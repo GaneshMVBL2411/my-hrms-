@@ -510,7 +510,7 @@ export function ScheduleCalendar({
       </View>
 
       {/* Real Event Creation Modal */}
-      <Modal visible={eventModalOpen} transparent animationType="slide" onRequestClose={() => setEventModalOpen(false)}>
+      <Modal visible={eventModalOpen} transparent animationType="slide" onRequestClose={() => setEventModalOpen(false)} statusBarTranslucent>
         <Pressable style={styles.modalBackdrop} onPress={() => setEventModalOpen(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalGrip} />

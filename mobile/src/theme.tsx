@@ -86,10 +86,10 @@ export const lightColors = {
    * follows any rebrand, while these describe a conversation and should not
    * move when a logo does.
    */
-  chatHeader: "#0b3d2c",
-  chatHeaderText: "#ffffff",
+  chatHeader: "#ffffff",
+  chatHeaderText: "#0f172a",
   /** The line under a name: online, or when they were last seen. */
-  chatHeaderMuted: "rgba(255,255,255,0.72)",
+  chatHeaderMuted: "#64748b",
   /** The wallpaper behind the thread. */
   chatGround: "#ece5dd",
   /** Your own messages. */

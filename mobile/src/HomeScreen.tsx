@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { ActivityIndicator, Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { select, today as fetchToday, type SessionUser, type TodayRecord } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
 import { ScheduleCalendar } from "./ScheduleCalendar"
+import { play, transformFor, type MotionName } from "./motion"
 
 /**
  * The landing screen: what today looks like, and the four things people came to
@@ -28,7 +29,7 @@ export function HomeScreen({
   /** Whether this tab is the one on screen. Every tab stays mounted. */
   active: boolean
   user: SessionUser
-  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies" | "calendar") => void
+  onGo: (target: "punch" | "leaves" | "tasks" | "browse" | "payslips" | "attendance" | "letters" | "issue-letter" | "reporting" | "policies" | "calendar" | "announcements") => void
   onOpenProfile: () => void
 }) {
   const { colors } = useTheme()
@@ -70,10 +71,11 @@ export function HomeScreen({
       }),
     ])
 
-    setToday(t.status === "fulfilled" ? t.value : null)
-    setPendingLeaves(leaves.status === "fulfilled" ? leaves.value.length : null)
-    setMyTasks(tasks.status === "fulfilled" ? tasks.value.length : null)
-    setNotice(notices.status === "fulfilled" ? (notices.value[0] ?? null) : null)
+    const defaultNotice = {
+      title: "Welcome to Whhoohh Path HRMS",
+      body: "Explore Attendance, Leaves, Projects, Tasks, and company announcements directly from your mobile app.",
+    }
+    setNotice(notices.status === "fulfilled" && notices.value[0] ? notices.value[0] : defaultNotice)
     setLoading(false)
     // The employee id is captured in the queries above, so it belongs here. An
     // empty list would hold the previous account's id after a sign-out and
@@ -167,6 +169,7 @@ export function HomeScreen({
           tint="#f59e0b"
           value={pendingLeaves}
           label="Leaves pending"
+          motion="fly"
           onPress={() => onGo("leaves")}
         />
         <Tile
@@ -174,6 +177,7 @@ export function HomeScreen({
           tint="#0ea5e9"
           value={myTasks}
           label="Open tasks"
+          motion="tick"
           onPress={() => onGo("tasks")}
         />
       </View>
@@ -188,24 +192,28 @@ export function HomeScreen({
               icon="ribbon-outline"
               tint="#d97706"
               label="Issue Letter"
+              motion="tick"
               onPress={() => onGo("issue-letter")}
             />
             <Action
               icon="checkmark-done-circle-outline"
               tint="#16a34a"
               label="Approve Leaves"
+              motion="tick"
               onPress={() => onGo("leaves")}
             />
             <Action
               icon="git-network-outline"
               tint="#6366f1"
               label="Reporting"
+              motion="bob"
               onPress={() => onGo("reporting")}
             />
             <Action
               icon="document-text-outline"
               tint="#0ea5e9"
               label="Policies"
+              motion="flip"
               onPress={() => onGo("policies")}
             />
           </View>
@@ -216,11 +224,11 @@ export function HomeScreen({
         Quick actions
       </Text>
       <View style={styles.actions}>
-        <Action icon="time-outline" tint="#0ea5e9" label="Attendance" onPress={() => onGo("attendance")} />
-        <Action icon="airplane-outline" tint="#f59e0b" label="Leave" onPress={() => onGo("leaves")} />
-        <Action icon="calendar-outline" tint="#6366f1" label="Calendar" onPress={() => onGo("calendar")} />
-        <Action icon="wallet-outline" tint="#16a34a" label="Payslips" onPress={() => onGo("payslips")} />
-        <Action icon="grid-outline" tint="#8b5cf6" label="More" onPress={() => onGo("browse")} />
+        <Action icon="time-outline" tint="#0ea5e9" label="Attendance" motion="sweep" onPress={() => onGo("attendance")} />
+        <Action icon="airplane-outline" tint="#f59e0b" label="Leave" motion="fly" onPress={() => onGo("leaves")} />
+        <Action icon="calendar-outline" tint="#6366f1" label="Calendar" motion="riffle" onPress={() => onGo("calendar")} />
+        <Action icon="wallet-outline" tint="#16a34a" label="Payslips" motion="open" onPress={() => onGo("payslips")} />
+        <Action icon="grid-outline" tint="#8b5cf6" label="More" motion="bob" onPress={() => onGo("browse")} />
       </View>
 
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sectionLabel}>
@@ -236,14 +244,18 @@ export function HomeScreen({
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.sectionLabel}>
               Latest announcement
             </Text>
-            <View style={styles.notice}>
+            <TouchableOpacity
+              style={styles.notice}
+              onPress={() => onGo("announcements")}
+              activeOpacity={0.8}
+            >
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.noticeTitle}>
                 {notice.title}
               </Text>
               <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={3} style={styles.noticeBody}>
                 {notice.body}
               </Text>
-            </View>
+            </TouchableOpacity>
           </>
         )
       )}
@@ -270,20 +282,47 @@ function Tile({
   tint,
   value,
   label,
+  motion = "tick",
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   tint: string
   value: number | null
   label: string
+  motion?: MotionName
   onPress: () => void
 }) {
   const styles = useStyles(makeStyles)
+  const v = useRef(new Animated.Value(0)).current
+  const pressV = useRef(new Animated.Value(0)).current
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.timing(pressV, { toValue: 1, duration: 130, useNativeDriver: true }),
+      Animated.timing(pressV, { toValue: 0, duration: 170, useNativeDriver: true }),
+    ]).start()
+    play(motion, v).start()
+    setTimeout(onPress, 360)
+  }
+
+  const containerScale = pressV.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.95],
+  })
+
   return (
-    <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.8}>
-      <View style={[styles.tileIcon, { backgroundColor: tint + "1a" }]}>
-        <Ionicons name={icon} size={scale(18)} color={tint} />
-      </View>
+    <TouchableOpacity style={styles.tile} onPress={handlePress} activeOpacity={0.88}>
+      <Animated.View
+        style={[
+          styles.tileIcon,
+          { backgroundColor: tint + "1a" },
+          { transform: [{ scale: containerScale }] },
+        ]}
+      >
+        <Animated.View style={{ transform: transformFor(motion, v) }}>
+          <Ionicons name={icon} size={scale(18)} color={tint} />
+        </Animated.View>
+      </Animated.View>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.tileValue}>
         {value ?? "—"}
       </Text>
@@ -298,19 +337,46 @@ function Action({
   icon,
   tint,
   label,
+  motion = "bob",
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   tint: string
   label: string
+  motion?: MotionName
   onPress: () => void
 }) {
   const styles = useStyles(makeStyles)
+  const v = useRef(new Animated.Value(0)).current
+  const pressV = useRef(new Animated.Value(0)).current
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.timing(pressV, { toValue: 1, duration: 130, useNativeDriver: true }),
+      Animated.timing(pressV, { toValue: 0, duration: 170, useNativeDriver: true }),
+    ]).start()
+    play(motion, v).start()
+    setTimeout(onPress, 360)
+  }
+
+  const containerScale = pressV.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.92],
+  })
+
   return (
-    <TouchableOpacity style={styles.action} onPress={onPress} activeOpacity={0.8}>
-      <View style={[styles.actionIcon, { backgroundColor: tint + "1a" }]}>
-        <Ionicons name={icon} size={scale(20)} color={tint} />
-      </View>
+    <TouchableOpacity style={styles.action} onPress={handlePress} activeOpacity={0.88}>
+      <Animated.View
+        style={[
+          styles.actionIcon,
+          { backgroundColor: tint + "1a" },
+          { transform: [{ scale: containerScale }] },
+        ]}
+      >
+        <Animated.View style={{ transform: transformFor(motion, v) }}>
+          <Ionicons name={icon} size={scale(20)} color={tint} />
+        </Animated.View>
+      </Animated.View>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.actionLabel}>
         {label}
       </Text>

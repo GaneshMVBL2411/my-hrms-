@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,7 +20,7 @@ import {
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
-import { applyLeave, leaveTypes, rpc, select, type LeaveType, type LetterPayload, type SessionUser } from "./api"
+import { applyLeave, leaveTypes, rpc, select, updateTask, type LeaveType, type LetterPayload, type SessionUser } from "./api"
 import { GenerateLetterSheet, LetterDocumentModal } from "./LetterScreen"
 import { SECTIONS, type RowAction, type RowView, type SectionDef, type Tone } from "./sections"
 import { scale, FONT_SCALE_CAP } from "./ui"
@@ -96,11 +97,6 @@ export function BrowseScreen({
       return (
         <View style={[styles.root, { paddingTop: insets.top + scale(12) }]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => setOpen(null)} hitSlop={10}>
-              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.back}>
-                ‹ Back
-              </Text>
-            </TouchableOpacity>
             <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.heading}>
               {open.title}
             </Text>
@@ -150,6 +146,33 @@ export function BrowseScreen({
   )
 }
 
+const DEFAULT_ANNOUNCEMENTS: Record<string, any>[] = [
+  {
+    id: 101,
+    title: "Welcome to Whhoohh Path HRMS",
+    body: "Explore Attendance, Leaves, Projects, Tasks, and company updates natively from your mobile app.",
+    category: "news",
+    pinned: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 102,
+    title: "Biometric Attendance Active",
+    body: "You can now punch in/out with Face ID or fingerprint directly from the Check In tab.",
+    category: "operations",
+    pinned: true,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 103,
+    title: "Upcoming Company All-Hands Meeting",
+    body: "Quarterly review and project roadmap discussion this Friday at 4:00 PM in the main conference room.",
+    category: "meeting",
+    pinned: false,
+    created_at: new Date(Date.now() - 172800000).toISOString(),
+  },
+]
+
 /**
  * One module on the grid, which moves the way its object moves when tapped.
  *
@@ -164,6 +187,7 @@ export function BrowseScreen({
 function ModuleTile({ section, onOpen }: { section: SectionDef; onOpen: () => void }) {
   const styles = useStyles(makeStyles)
   const v = useRef(new Animated.Value(0)).current
+  const pressV = useRef(new Animated.Value(0)).current
   const [reduceMotion, setReduceMotion] = useState(false)
 
   useEffect(() => {
@@ -174,22 +198,31 @@ function ModuleTile({ section, onOpen }: { section: SectionDef; onOpen: () => vo
 
   const press = () => {
     if (reduceMotion) return onOpen()
+    Animated.sequence([
+      Animated.timing(pressV, { toValue: 1, duration: 130, useNativeDriver: true }),
+      Animated.timing(pressV, { toValue: 0, duration: 170, useNativeDriver: true }),
+    ]).start()
     play(section.motion, v).start()
-    // Slightly ahead of the full duration: the tail of a settle is not worth
-    // waiting on, and the delay should not be long enough to feel like lag.
-    setTimeout(onOpen, Math.round(MOTION_MS[section.motion] * 0.7))
+    setTimeout(onOpen, 360)
   }
 
+  const containerScale = pressV.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.92],
+  })
+
   return (
-    <TouchableOpacity style={styles.gridItem} onPress={press} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.gridItem} onPress={press} activeOpacity={0.88}>
       <Animated.View
         style={[
           styles.gridIcon,
           { backgroundColor: section.tint + "1a" },
-          { transform: reduceMotion ? [] : transformFor(section.motion, v) },
+          { transform: reduceMotion ? [] : [{ scale: containerScale }] },
         ]}
       >
-        <Ionicons name={section.icon as keyof typeof Ionicons.glyphMap} size={scale(22)} color={section.tint} />
+        <Animated.View style={{ transform: reduceMotion ? [] : transformFor(section.motion, v) }}>
+          <Ionicons name={section.icon as keyof typeof Ionicons.glyphMap} size={scale(22)} color={section.tint} />
+        </Animated.View>
       </Animated.View>
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} numberOfLines={1} style={styles.gridLabel}>
         {section.title}
@@ -209,7 +242,7 @@ function SectionList({
   user: SessionUser
   initialActionOpen?: boolean
   onActionOpened?: () => void
-  onBack: () => void
+  onBack?: () => void
 }) {
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
@@ -236,6 +269,8 @@ function SectionList({
    */
   const [openLetterId, setOpenLetterId] = useState<number | null>(null)
   const [freshLetter, setFreshLetter] = useState<LetterPayload | null>(null)
+  const [viewingAnnouncement, setViewingAnnouncement] = useState<Record<string, any> | null>(null)
+  const [viewingTask, setViewingTask] = useState<Record<string, any> | null>(null)
   const insets = useSafeAreaInsets()
 
   const load = useCallback(async () => {
@@ -253,14 +288,21 @@ function SectionList({
             ],
           }
         : section.query
-      setRows(
-        section.rpc
-          ? await rpc<Record<string, any>[]>(section.rpc)
-          : await select<Record<string, any>>(section.table, query)
-      )
+      const res = section.rpc
+        ? await rpc<Record<string, any>[]>(section.rpc)
+        : await select<Record<string, any>>(section.table, query)
+      if (section.key === "announcements" && (!res || res.length === 0)) {
+        setRows(DEFAULT_ANNOUNCEMENTS)
+      } else {
+        setRows(res)
+      }
     } catch (e) {
-      setRows([])
-      setError((e as Error).message || "Could not load")
+      if (section.key === "announcements") {
+        setRows(DEFAULT_ANNOUNCEMENTS)
+      } else {
+        setRows([])
+        setError((e as Error).message || "Could not load")
+      }
     }
     // The employee id is part of the query for a scoped section, so a change
     // of account has to re-run it rather than keep the previous person's list.
@@ -308,12 +350,7 @@ function SectionList({
   return (
     <View style={[styles.root, { paddingTop: insets.top + scale(12) }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} hitSlop={10}>
-          <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.back}>
-            ‹ Back
-          </Text>
-        </TouchableOpacity>
-        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.heading}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.heading, { flex: 1 }]}>
           {section.title}
         </Text>
         {screenAction && (
@@ -362,9 +399,13 @@ function SectionList({
               onPress={
                 section.opens === "letter"
                   ? () => setOpenLetterId(Number(item.raw.id))
-                  : item.actions.length
-                    ? () => offer(item.raw, item.actions)
-                    : undefined
+                  : section.key === "announcements"
+                    ? () => setViewingAnnouncement(item.raw)
+                    : section.key === "tasks"
+                      ? () => setViewingTask(item.raw)
+                      : item.actions.length
+                        ? () => offer(item.raw, item.actions)
+                        : undefined
               }
             />
           )}
@@ -410,6 +451,24 @@ function SectionList({
           onClose={() => {
             setOpenLetterId(null)
             setFreshLetter(null)
+          }}
+        />
+      )}
+
+      {viewingAnnouncement && (
+        <AnnouncementModal
+          announcement={viewingAnnouncement}
+          onClose={() => setViewingAnnouncement(null)}
+        />
+      )}
+
+      {viewingTask && (
+        <TaskDetailModal
+          task={viewingTask}
+          onClose={() => setViewingTask(null)}
+          onUpdated={() => {
+            setViewingTask(null)
+            load()
           }}
         />
       )}
@@ -482,7 +541,7 @@ function NotePrompt({
   const short = note.trim().length < prompt.minLength
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <Modal transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.backdrop}>
         {/* Scrollable and height-capped: the window shrinks when the keyboard
             opens, and a sheet taller than what is left had its lower fields —
@@ -539,6 +598,710 @@ function NotePrompt({
   )
 }
 
+function AnnouncementModal({
+  announcement,
+  onClose,
+}: {
+  announcement: Record<string, any>
+  onClose: () => void
+}) {
+  const { colors } = useTheme()
+
+  const formattedDate = announcement.created_at
+    ? new Date(announcement.created_at).toLocaleDateString("en-IN", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Announcement"
+
+  return (
+    <Modal
+      visible={true}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(15, 23, 42, 0.65)",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: scale(18),
+        }}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View
+          style={{
+            width: "100%",
+            maxWidth: scale(420),
+            backgroundColor: colors.card,
+            borderRadius: scale(16),
+            padding: scale(20),
+            borderWidth: 1,
+            borderColor: colors.border,
+            gap: scale(12),
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.25,
+            shadowRadius: 16,
+            elevation: 10,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: scale(8) }}>
+              <View
+                style={{
+                  width: scale(36),
+                  height: scale(36),
+                  borderRadius: scale(10),
+                  backgroundColor: "#f973161a",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="megaphone-outline" size={scale(20)} color="#f97316" />
+              </View>
+              {announcement.category && (
+                <View
+                  style={{
+                    backgroundColor: announcement.pinned ? "#f59e0b20" : colors.border,
+                    paddingHorizontal: scale(8),
+                    paddingVertical: scale(3),
+                    borderRadius: scale(6),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: scale(11),
+                      fontWeight: "700",
+                      color: announcement.pinned ? "#d97706" : colors.muted,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {announcement.pinned ? "Pinned Notice" : announcement.category}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{
+                width: scale(30),
+                height: scale(30),
+                borderRadius: scale(15),
+                backgroundColor: colors.border,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="close" size={scale(18)} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ gap: scale(4) }}>
+            <Text
+              style={{
+                fontSize: scale(18),
+                fontWeight: "700",
+                color: colors.text,
+                lineHeight: scale(24),
+              }}
+            >
+              {announcement.title}
+            </Text>
+            <Text style={{ fontSize: scale(12), color: colors.muted }}>
+              {formattedDate}
+              {announcement.created_by_name ? ` · from ${announcement.created_by_name}` : ""}
+            </Text>
+          </View>
+
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+
+          <ScrollView style={{ maxHeight: scale(260) }} showsVerticalScrollIndicator={true}>
+            <Text
+              style={{
+                fontSize: scale(14),
+                color: colors.text,
+                lineHeight: scale(22),
+              }}
+            >
+              {announcement.body}
+            </Text>
+          </ScrollView>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.brand,
+              borderRadius: scale(10),
+              paddingVertical: scale(12),
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: scale(6),
+            }}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
+            <Text style={{ color: colors.onFill, fontWeight: "700", fontSize: scale(14) }}>
+              Close
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
+function formatRole(role?: string | null): string {
+  if (!role) return "Manager"
+  const map: Record<string, string> = {
+    founder: "Founder",
+    company_admin: "Admin",
+    hr_admin: "HR Admin",
+    project_manager: "Project Manager",
+    team_lead: "Team Leader",
+    employee: "Employee",
+  }
+  return map[role] || role.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+}
+
+function TaskDetailModal({
+  task,
+  onClose,
+  onUpdated,
+}: {
+  task: Record<string, any>
+  onClose: () => void
+  onUpdated: () => void
+}) {
+  const { colors } = useTheme()
+  const [progress, setProgress] = useState<number>(Number(task.progress) || 0)
+  const [inputVal, setInputVal] = useState<string>(String(task.progress ?? 0))
+  const [status, setStatus] = useState<string>(task.status || "assigned")
+  const [saving, setSaving] = useState(false)
+
+  const applyProgress = (newVal: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(newVal)))
+    setProgress(clamped)
+    setInputVal(String(clamped))
+    if (clamped >= 100) {
+      setStatus("completed")
+    } else if (clamped > 0 && (status === "assigned" || status === "todo" || status === "to_do")) {
+      setStatus("in_progress")
+    }
+  }
+
+  const handleManualText = (txt: string) => {
+    setInputVal(txt)
+    const parsed = parseInt(txt, 10)
+    if (!Number.isNaN(parsed)) {
+      const clamped = Math.max(0, Math.min(100, parsed))
+      setProgress(clamped)
+      if (clamped >= 100) {
+        setStatus("completed")
+      } else if (clamped > 0 && (status === "assigned" || status === "todo" || status === "to_do")) {
+        setStatus("in_progress")
+      }
+    }
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await updateTask(Number(task.id), {
+        progress,
+        status,
+      })
+      Alert.alert("Success", "Task progress updated successfully!")
+      onUpdated()
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not update task")
+      setSaving(false)
+    }
+  }
+
+  const formattedCreatedDate = task.created_at
+    ? new Date(task.created_at).toLocaleDateString("en-IN", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Recently"
+
+  const formattedDueDate = task.due_date
+    ? new Date(task.due_date).toLocaleDateString("en-IN", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null
+
+  const projectProgress =
+    typeof task.project_progress === "number"
+      ? task.project_progress
+      : parseInt(task.project_progress, 10) || 0
+
+  const STATUS_OPTIONS = [
+    { key: "assigned", label: "Assigned" },
+    { key: "in_progress", label: "In Progress" },
+    { key: "review", label: "Review" },
+    { key: "completed", label: "Completed" },
+  ]
+
+  const PRESETS = [0, 25, 50, 75, 100]
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(15, 23, 42, 0.65)",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: scale(16),
+        }}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ width: "100%", maxWidth: scale(420) }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: scale(16),
+              padding: scale(18),
+              borderWidth: 1,
+              borderColor: colors.border,
+              gap: scale(14),
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
+              shadowRadius: 16,
+              elevation: 10,
+              maxHeight: "90%",
+            }}
+          >
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: scale(8) }}>
+                <View
+                  style={{
+                    width: scale(34),
+                    height: scale(34),
+                    borderRadius: scale(8),
+                    backgroundColor: colors.brand + "1a",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="checkbox-outline" size={scale(20)} color={colors.brand} />
+                </View>
+                <Text style={{ fontSize: scale(15), fontWeight: "700", color: colors.text }}>
+                  Task Details & Progress
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={{
+                  width: scale(28),
+                  height: scale(28),
+                  borderRadius: scale(14),
+                  backgroundColor: colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="close" size={scale(16)} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: scale(12) }}>
+              {/* Task Title & Meta */}
+              <View style={{ gap: scale(4) }}>
+                <Text style={{ fontSize: scale(17), fontWeight: "700", color: colors.text, lineHeight: scale(22) }}>
+                  {task.title}
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: scale(6), marginTop: scale(2) }}>
+                  {task.priority && (
+                    <View
+                      style={{
+                        backgroundColor:
+                          task.priority === "high"
+                            ? "#ef444420"
+                            : task.priority === "medium"
+                              ? "#f59e0b20"
+                              : colors.border,
+                        paddingHorizontal: scale(8),
+                        paddingVertical: scale(2),
+                        borderRadius: scale(6),
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: scale(11),
+                          fontWeight: "700",
+                          color:
+                            task.priority === "high"
+                              ? "#dc2626"
+                              : task.priority === "medium"
+                                ? "#d97706"
+                                : colors.muted,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {task.priority} Priority
+                      </Text>
+                    </View>
+                  )}
+                  {formattedDueDate && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: scale(4) }}>
+                      <Ionicons name="calendar-outline" size={scale(12)} color={colors.muted} />
+                      <Text style={{ fontSize: scale(12), color: colors.muted }}>
+                        Due {formattedDueDate}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {task.description ? (
+                <Text style={{ fontSize: scale(13), color: colors.muted, lineHeight: scale(18) }}>
+                  {task.description}
+                </Text>
+              ) : null}
+
+              {/* Created By Card */}
+              <View
+                style={{
+                  backgroundColor: colors.border + "40",
+                  borderRadius: scale(10),
+                  padding: scale(10),
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: scale(10),
+                }}
+              >
+                <View
+                  style={{
+                    width: scale(32),
+                    height: scale(32),
+                    borderRadius: scale(16),
+                    backgroundColor: colors.brand + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="person-outline" size={scale(16)} color={colors.brand} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: scale(11), color: colors.muted, fontWeight: "500" }}>
+                    Created By
+                  </Text>
+                  <Text style={{ fontSize: scale(13), fontWeight: "700", color: colors.text }}>
+                    {task.creator_name || "Manager"}
+                    <Text style={{ fontSize: scale(11), fontWeight: "600", color: colors.brand }}>
+                      {"  "}• {formatRole(task.creator_role)}
+                    </Text>
+                  </Text>
+                  <Text style={{ fontSize: scale(11), color: colors.muted, marginTop: scale(1) }}>
+                    Date: {formattedCreatedDate}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Overall Project Card */}
+              <View
+                style={{
+                  backgroundColor: colors.border + "40",
+                  borderRadius: scale(10),
+                  padding: scale(10),
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  gap: scale(6),
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: scale(6), flex: 1 }}>
+                    <Ionicons name="folder-outline" size={scale(16)} color="#10b981" />
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontSize: scale(13), fontWeight: "700", color: colors.text, flexShrink: 1 }}
+                    >
+                      {task.project_name || "General / No Project"}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: scale(12), fontWeight: "700", color: "#10b981" }}>
+                    {projectProgress}% Overall
+                  </Text>
+                </View>
+                {/* Project progress bar */}
+                <View
+                  style={{
+                    height: scale(6),
+                    backgroundColor: colors.border,
+                    borderRadius: scale(3),
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      height: "100%",
+                      backgroundColor: "#10b981",
+                      borderRadius: scale(3),
+                      width: `${Math.min(100, Math.max(0, projectProgress))}%`,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Work Completed / Progress Update Section */}
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: scale(12),
+                  padding: scale(12),
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  gap: scale(10),
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: scale(13), fontWeight: "700", color: colors.text }}>
+                    Work Completed
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: colors.brand + "1a",
+                      paddingHorizontal: scale(8),
+                      paddingVertical: scale(2),
+                      borderRadius: scale(6),
+                    }}
+                  >
+                    <Text style={{ fontSize: scale(13), fontWeight: "800", color: colors.brand }}>
+                      {progress}%
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Progress bar */}
+                <View
+                  style={{
+                    height: scale(8),
+                    backgroundColor: colors.border,
+                    borderRadius: scale(4),
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      height: "100%",
+                      backgroundColor: colors.brand,
+                      borderRadius: scale(4),
+                      width: `${progress}%`,
+                    }}
+                  />
+                </View>
+
+                {/* Manual Input & Steppers */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: scale(8) }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: scale(6) }}>
+                    <Text style={{ fontSize: scale(12), color: colors.muted, fontWeight: "600" }}>
+                      Manual %:
+                    </Text>
+                    <TextInput
+                      style={{
+                        width: scale(56),
+                        height: scale(34),
+                        borderRadius: scale(8),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.border + "30",
+                        textAlign: "center",
+                        fontSize: scale(14),
+                        fontWeight: "700",
+                        color: colors.text,
+                        paddingVertical: 0,
+                      }}
+                      keyboardType="numeric"
+                      maxLength={3}
+                      value={inputVal}
+                      onChangeText={handleManualText}
+                      selectTextOnFocus
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: scale(6) }}>
+                    <TouchableOpacity
+                      onPress={() => applyProgress(progress - 10)}
+                      disabled={progress <= 0}
+                      style={{
+                        paddingHorizontal: scale(10),
+                        height: scale(34),
+                        borderRadius: scale(8),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: progress <= 0 ? 0.4 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: scale(12), fontWeight: "700", color: colors.text }}>
+                        -10%
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => applyProgress(progress + 10)}
+                      disabled={progress >= 100}
+                      style={{
+                        paddingHorizontal: scale(10),
+                        height: scale(34),
+                        borderRadius: scale(8),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: progress >= 100 ? 0.4 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: scale(12), fontWeight: "700", color: colors.text }}>
+                        +10%
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Quick Presets */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: scale(6) }}>
+                  <Text style={{ fontSize: scale(11), color: colors.muted, fontWeight: "600", marginRight: scale(2) }}>
+                    Quick:
+                  </Text>
+                  {PRESETS.map((p) => {
+                    const isSelected = progress === p
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        onPress={() => applyProgress(p)}
+                        style={{
+                          flex: 1,
+                          height: scale(28),
+                          borderRadius: scale(6),
+                          backgroundColor: isSelected ? colors.brand : colors.border + "50",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: scale(11),
+                            fontWeight: "700",
+                            color: isSelected ? colors.onFill : colors.muted,
+                          }}
+                        >
+                          {p}%
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+
+                {/* Status Selector */}
+                <View style={{ gap: scale(6), marginTop: scale(4) }}>
+                  <Text style={{ fontSize: scale(12), color: colors.muted, fontWeight: "600" }}>
+                    Status:
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: scale(6) }}>
+                    {STATUS_OPTIONS.map((opt) => {
+                      const isActive = status === opt.key
+                      return (
+                        <TouchableOpacity
+                          key={opt.key}
+                          onPress={() => {
+                            setStatus(opt.key)
+                            if (opt.key === "completed" && progress < 100) {
+                              applyProgress(100)
+                            }
+                          }}
+                          style={{
+                            paddingHorizontal: scale(10),
+                            paddingVertical: scale(6),
+                            borderRadius: scale(8),
+                            backgroundColor: isActive ? colors.brand : colors.border + "50",
+                            borderWidth: 1,
+                            borderColor: isActive ? colors.brand : colors.border,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: scale(11),
+                              fontWeight: "700",
+                              color: isActive ? colors.onFill : colors.text,
+                            }}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: "row", gap: scale(8), marginTop: scale(4) }}>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={{
+                    flex: 1,
+                    height: scale(44),
+                    borderRadius: scale(10),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontSize: scale(14), fontWeight: "600", color: colors.muted }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={{
+                    flex: 1.5,
+                    height: scale(44),
+                    borderRadius: scale(10),
+                    backgroundColor: colors.brand,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? (
+                    <ActivityIndicator color={colors.onFill} />
+                  ) : (
+                    <Text style={{ fontSize: scale(14), fontWeight: "700", color: colors.onFill }}>
+                      Update Progress
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  )
+}
+
 /**
  * A leave request, filled in on the phone.
  *
@@ -581,7 +1344,7 @@ function ApplyLeave({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   }
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <Modal transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

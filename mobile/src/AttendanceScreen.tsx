@@ -473,6 +473,7 @@ export function AttendanceScreen({
         <Modal
           visible
           animationType="slide"
+          statusBarTranslucent
           onRequestClose={() => {
             if (!submittingPunch) setVerifyModal(null)
           }}
@@ -609,6 +610,7 @@ export function AttendanceScreen({
           transparent
           visible
           animationType="fade"
+          statusBarTranslucent
           onRequestClose={() => setFullPhotoModal(null)}
         >
           <Pressable style={styles.photoModalBackdrop} onPress={() => setFullPhotoModal(null)}>

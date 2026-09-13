@@ -143,7 +143,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (user: SessionUser) =>
             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
           >
             <Ionicons
-              name={showPassword ? "eye-off-outline" : "eye-outline"}
+              name={showPassword ? "eye-outline" : "eye-off-outline"}
               size={scale(21)}
               color={colors.muted}
             />
@@ -235,7 +235,7 @@ function ForgotPassword({
   }
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <Modal transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

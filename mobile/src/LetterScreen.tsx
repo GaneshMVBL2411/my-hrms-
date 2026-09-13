@@ -200,7 +200,7 @@ export function LetterDocumentModal({
   }
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose}>
+    <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.root, { paddingTop: insets.top + scale(10) }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} hitSlop={10}>
@@ -437,7 +437,7 @@ export function GenerateLetterSheet({
   }
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose}>
+    <Modal animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.root, { paddingTop: insets.top + scale(10) }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} hitSlop={10}>

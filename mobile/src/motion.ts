@@ -15,15 +15,27 @@ import { Animated, Easing } from "react-native"
  * UI thread while JavaScript is busy fetching the list underneath.
  */
 export type MotionName =
-  | "bob"     // people shift their weight
-  | "tick"    // a checkmark lands
-  | "fly"     // a plane leaves, and returns
-  | "open"    // a wallet or folder opens
-  | "sweep"   // a clock hand goes round
-  | "lid"     // a laptop lid folds to its hinge
-  | "flip"    // a page turns
-  | "riffle"  // calendar sheets
-  | "shout"   // a megaphone recoils
+  | "bob" // people shift their weight
+  | "tick" // a checkmark lands
+  | "fly" // a plane leaves, and returns
+  | "open" // a wallet or folder opens
+  | "sweep" // a clock hand goes round
+  | "lid" // a laptop lid folds to its hinge
+  | "flip" // a page turns
+  | "riffle" // calendar sheets
+  | "shout" // a megaphone recoils
+  | "task_open"
+  | "leave_open"
+  | "payslip_open"
+  | "project_open"
+  | "calendar_flip"
+  | "megaphone_shout"
+  | "people_bounce"
+  | "clock_tick"
+  | "network_expand"
+  | "laptop_open"
+  | "policy_scroll"
+  | "ribbon_stamp"
 
 /** How long each takes, so the grid can wait before navigating away. */
 export const MOTION_MS: Record<MotionName, number> = {
@@ -36,6 +48,18 @@ export const MOTION_MS: Record<MotionName, number> = {
   flip: 640,
   riffle: 560,
   shout: 520,
+  task_open: 380,
+  leave_open: 620,
+  payslip_open: 460,
+  project_open: 460,
+  calendar_flip: 560,
+  megaphone_shout: 520,
+  people_bounce: 420,
+  clock_tick: 700,
+  network_expand: 420,
+  laptop_open: 520,
+  policy_scroll: 640,
+  ribbon_stamp: 380,
 }
 
 /** Drives one tile's value from 0 to 1 and back where the motion returns. */
@@ -48,6 +72,7 @@ export function play(name: MotionName, value: Animated.Value): Animated.Composit
   switch (name) {
     // One turn, then stop where it started — a hand sweeping, not a spin.
     case "sweep":
+    case "clock_tick":
       return Animated.sequence([
         Animated.timing(value, {
           toValue: 1,
@@ -60,11 +85,13 @@ export function play(name: MotionName, value: Animated.Value): Animated.Composit
         Animated.timing(value, { toValue: 0, duration: 0, useNativeDriver: true }),
       ])
     case "flip":
+    case "policy_scroll":
     case "riffle":
+    case "calendar_flip":
       return Animated.sequence([
         Animated.timing(value, {
           toValue: 1,
-          duration: MOTION_MS[name],
+          duration: MOTION_MS[name] || 560,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -72,9 +99,16 @@ export function play(name: MotionName, value: Animated.Value): Animated.Composit
       ])
     // A plane accelerates away and eases back; a spring would look like elastic.
     case "fly":
-      return Animated.sequence([up(MOTION_MS.fly * 0.55, Easing.in(Easing.cubic)), down(MOTION_MS.fly * 0.45)])
+    case "leave_open":
+      return Animated.sequence([
+        up((MOTION_MS[name] || 620) * 0.55, Easing.in(Easing.cubic)),
+        down((MOTION_MS[name] || 620) * 0.45),
+      ])
     default:
-      return Animated.sequence([up(MOTION_MS[name] * 0.45), down(MOTION_MS[name] * 0.55)])
+      return Animated.sequence([
+        up((MOTION_MS[name] || 420) * 0.45),
+        down((MOTION_MS[name] || 420) * 0.55),
+      ])
   }
 }
 
@@ -86,26 +120,38 @@ export function transformFor(name: MotionName, v: Animated.Value) {
 
   switch (name) {
     case "bob":
+    case "people_bounce":
+    case "network_expand":
       return [{ translateY: to([0, -7]) }]
     case "tick":
+    case "task_open":
+    case "ribbon_stamp":
       return [{ scale: to([1, 1.35]) }]
     // Away up and to the right, shrinking slightly with distance.
     case "fly":
+    case "leave_open":
       return [{ translateX: to([0, 16]) }, { translateY: to([0, -14]) }, { scale: to([1, 0.82]) }]
     // Narrowing on one axis reads as a lid or a flap turning away from you.
     case "open":
+    case "payslip_open":
+    case "project_open":
       return [{ scaleX: to([1, 0.55]) }, { translateY: to([0, -3]) }]
     case "sweep":
+    case "clock_tick":
       return [{ rotate: deg(["0deg", "360deg"]) }]
     // Collapses toward its own base, the way a lid closes onto a keyboard.
     case "lid":
+    case "laptop_open":
       return [{ scaleY: to([1, 0.25]) }, { translateY: to([0, 6]) }]
     case "flip":
+    case "policy_scroll":
       return [{ rotateY: deg(["0deg", "180deg"]) }]
     case "riffle":
+    case "calendar_flip":
       return [{ scaleY: to([1, -1]) }]
     // Back and away from the mouth, which is where the sound goes.
     case "shout":
+    case "megaphone_shout":
       return [{ rotate: deg(["0deg", "-14deg"]) }, { translateX: to([0, -4]) }]
     default:
       return []

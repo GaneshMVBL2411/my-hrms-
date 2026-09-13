@@ -1106,6 +1106,7 @@ export function MessagesScreen({
           transparent
           visible={attachmentMenu !== null}
           animationType="slide"
+          statusBarTranslucent
           onRequestClose={() => setAttachmentMenu(null)}
         >
           <Pressable style={styles.sheetBackdrop} onPress={() => setAttachmentMenu(null)}>
@@ -1265,6 +1266,7 @@ export function MessagesScreen({
           transparent
           visible={pickingContact}
           animationType="slide"
+          statusBarTranslucent
           onRequestClose={() => setPickingContact(false)}
         >
           <Pressable style={styles.sheetBackdrop} onPress={() => setPickingContact(false)}>
@@ -1314,6 +1316,7 @@ export function MessagesScreen({
           transparent
           visible={pollModal}
           animationType="slide"
+          statusBarTranslucent
           onRequestClose={() => setPollModal(false)}
         >
           <Pressable style={styles.sheetBackdrop} onPress={() => setPollModal(false)}>
@@ -1422,8 +1425,8 @@ export function MessagesScreen({
         >
           <Ionicons
             name={picking ? "close" : "create-outline"}
-            size={scale(20)}
-            color={colors.accent}
+            size={scale(22)}
+            color={colors.text}
           />
         </TouchableOpacity>
       </View>
@@ -2165,7 +2168,7 @@ function ActionSheet({
   const sent = queued ? null : (target as Message)
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose} visible>
+    <Modal transparent animationType="fade" onRequestClose={onClose} visible statusBarTranslucent>
       <Pressable style={styles.sheetBackdrop} onPress={onClose}>
         {/* Stops a tap inside the sheet closing it on the way through. */}
         <Pressable
@@ -2330,8 +2333,10 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: scale(16),
     paddingBottom: scale(10),
     backgroundColor: colors.chatHeader,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  barTitle: { fontSize: scale(16), fontWeight: "700", color: colors.chatHeaderText },
+  barTitle: { fontSize: scale(18), fontWeight: "700", color: colors.chatHeaderText },
   barSubtitle: { fontSize: scale(11.5), color: colors.chatHeaderMuted, fontWeight: "500" },
   presenceRow: { flexDirection: "row", alignItems: "center", gap: scale(5), marginTop: scale(2) },
   presenceDot: {
