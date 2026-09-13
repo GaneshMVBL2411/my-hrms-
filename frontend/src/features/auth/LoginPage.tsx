@@ -117,7 +117,7 @@ export function LoginPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  {showPassword ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                 </button>
               </div>
               {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}

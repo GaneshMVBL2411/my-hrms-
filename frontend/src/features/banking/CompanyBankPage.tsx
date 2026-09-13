@@ -130,7 +130,7 @@ function AccountCard({
                 className="text-muted-foreground hover:text-foreground"
                 aria-label={revealed ? "Hide account number" : "Show account number"}
               >
-                {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                {revealed ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
               </button>
             </dd>
           </div>
