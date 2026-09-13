@@ -13,7 +13,7 @@ import type {
 } from "@/features/tasks/types"
 
 const SUMMARY_COLUMNS =
-  "id, title, project_id, project_name, assigned_to, assignee_name, priority, due_date, status, progress, is_active, project_stage, start_date, end_date, task_file_url, task_file_name, task_managers, task_members"
+  "id, title, project_id, project_name, project_progress, assigned_to, assignee_name, priority, due_date, status, progress, is_active, project_stage, start_date, end_date, task_file_url, task_file_name, task_managers, task_members, creator_name, creator_role"
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, description, created_at`
 
 const SORT_COLUMNS: Record<string, string> = {

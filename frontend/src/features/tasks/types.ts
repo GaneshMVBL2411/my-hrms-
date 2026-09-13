@@ -28,6 +28,9 @@ export interface TaskSummary {
   taskFileName?: string | null
   taskManagers?: number[]
   taskMembers?: number[]
+  projectProgress?: number | null
+  creatorName?: string | null
+  creatorRole?: string | null
 }
 
 export interface TaskChecklistItem {

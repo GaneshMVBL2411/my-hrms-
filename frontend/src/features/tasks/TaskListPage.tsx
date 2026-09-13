@@ -33,6 +33,19 @@ const priorityTone: Record<Priority, "danger" | "warning" | "secondary"> = {
   low: "secondary",
 }
 
+function formatRole(role?: string | null) {
+  if (!role) return "Manager"
+  const map: Record<string, string> = {
+    founder: "Founder",
+    company_admin: "Admin",
+    hr_admin: "HR Admin",
+    project_manager: "Project Manager",
+    team_lead: "Team Lead",
+    employee: "Employee",
+  }
+  return map[role] || role.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+}
+
 export function TaskListPage({ projectId, embedded = false }: { projectId?: number; embedded?: boolean }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -137,8 +150,28 @@ export function TaskListPage({ projectId, embedded = false }: { projectId?: numb
             )}
             {data?.items.map((task) => (
               <TableRow key={task.id} className="cursor-pointer" onClick={() => setSelectedTaskId(task.id)}>
-                <TableCell className="font-medium text-foreground">{task.title}</TableCell>
-                {!projectId && <TableCell>{task.projectName ?? "—"}</TableCell>}
+                <TableCell className="font-medium text-foreground">
+                  <div>
+                    <span>{task.title}</span>
+                    {task.creatorName && (
+                      <span className="block text-[11px] font-normal text-muted-foreground">
+                        by {task.creatorName} ({formatRole(task.creatorRole)})
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                {!projectId && (
+                  <TableCell>
+                    <div>
+                      <span>{task.projectName ?? "—"}</span>
+                      {task.projectName && task.projectProgress !== null && task.projectProgress !== undefined && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          {task.projectProgress}% overall
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
                 <TableCell>{task.assigneeName ?? "Unassigned"}</TableCell>
                 <TableCell>
                   <Badge variant={priorityTone[task.priority]} className="capitalize">

@@ -1,7 +1,7 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Trash2, Send } from "lucide-react"
+import { Plus, Trash2, Send, FolderKanban, User, Calendar } from "lucide-react"
 import { format } from "date-fns"
 import {
   Dialog,
@@ -30,6 +30,19 @@ import type { Priority, TaskStatus } from "@/features/tasks/types"
 
 const NONE_VALUE = "none"
 
+function formatRole(role?: string | null) {
+  if (!role) return "Manager"
+  const map: Record<string, string> = {
+    founder: "Founder",
+    company_admin: "Admin",
+    hr_admin: "HR Admin",
+    project_manager: "Project Manager",
+    team_lead: "Team Lead",
+    employee: "Employee",
+  }
+  return map[role] || role.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+}
+
 const priorityTone: Record<Priority, "danger" | "warning" | "secondary"> = {
   high: "danger",
   medium: "warning",
@@ -49,6 +62,7 @@ export function TaskDetailDialog({
   const queryClient = useQueryClient()
   const [newItem, setNewItem] = useState("")
   const [newComment, setNewComment] = useState("")
+  const [manualProgress, setManualProgress] = useState<string>("")
 
   const canManage =
     (user?.role === "founder" || user?.role === "company_admin") || user?.role === "hr_admin" || user?.role === "project_manager" || user?.role === "team_lead"
@@ -58,6 +72,12 @@ export function TaskDetailDialog({
     queryFn: () => getTask(taskId!),
     enabled: open && !!taskId,
   })
+
+  useEffect(() => {
+    if (task) {
+      setManualProgress(String(task.progress ?? 0))
+    }
+  }, [task?.id, task?.progress])
 
   const { data: projects } = useQuery({
     queryKey: ["projects", "all"],
@@ -148,7 +168,16 @@ export function TaskDetailDialog({
   if (!task) return null
 
   const isAssignee = !!user?.employeeId && task.assignedTo === user.employeeId
+  const canUpdateProgress = isAssignee || canManage
   const completedCount = task.checklistItems.filter((i) => i.isDone).length
+
+  const applyProgress = (val: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(val)))
+    setManualProgress(String(clamped))
+    if (clamped !== task.progress) {
+      progressMutation.mutate(clamped)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,7 +186,49 @@ export function TaskDetailDialog({
           <DialogTitle>{task.title}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
+          {/* Creator & Creation Date */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <User className="size-3.5 text-primary" />
+              <span>
+                Created by <strong className="font-semibold text-foreground">{task.creatorName || "Manager"}</strong>
+                {task.creatorRole && (
+                  <span className="ml-1.5 inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
+                    {formatRole(task.creatorRole)}
+                  </span>
+                )}
+              </span>
+            </div>
+            {task.createdAt && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Calendar className="size-3.5" />
+                <span>{format(new Date(task.createdAt), "MMM d, yyyy")}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Overall Project & Progress */}
+          {task.projectName && (
+            <div className="rounded-lg border border-border/70 bg-card p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 font-medium text-foreground">
+                  <FolderKanban className="size-4 text-primary" />
+                  <span>Overall Project: <strong className="text-foreground">{task.projectName}</strong></span>
+                </div>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {task.projectProgress ?? 0}% completed
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.max(0, task.projectProgress ?? 0))}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             {canManage ? (
               <Select value={task.priority} onValueChange={(v) => priorityMutation.mutate(v as Priority)}>
@@ -189,31 +260,97 @@ export function TaskDetailDialog({
             {task.dueDate && <span className="text-xs text-muted-foreground">Due {task.dueDate}</span>}
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+          {/* Work Completed / Task Progress */}
+          <div className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-foreground">Work Completed</span>
+              <span className="text-xs font-bold text-primary">{task.progress}%</span>
+            </div>
+
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full bg-primary transition-all"
+                className="h-full bg-primary transition-all duration-300"
                 style={{ width: `${task.progress}%` }}
               />
             </div>
-            {isAssignee ? (
-              <Select
-                value={String(task.progress)}
-                onValueChange={(v) => progressMutation.mutate(Number(v))}
-              >
-                <SelectTrigger className="h-7 w-24 rounded-md text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 11 }, (_, i) => i * 10).map((value) => (
-                    <SelectItem key={value} value={String(value)}>
-                      {value}%
-                    </SelectItem>
+
+            {canUpdateProgress && (
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Manual %:</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={manualProgress}
+                      onChange={(e) => setManualProgress(e.target.value)}
+                      onBlur={() => {
+                        const num = Number(manualProgress)
+                        if (!Number.isNaN(num)) applyProgress(num)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const num = Number(manualProgress)
+                          if (!Number.isNaN(num)) applyProgress(num)
+                        }
+                      }}
+                      className="h-7 w-16 text-center text-xs"
+                    />
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        const num = Number(manualProgress)
+                        if (!Number.isNaN(num)) applyProgress(num)
+                      }}
+                    >
+                      Update
+                    </Button>
+                  </div>
+
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => applyProgress((task.progress ?? 0) - 10)}
+                      disabled={(task.progress ?? 0) <= 0}
+                    >
+                      -10%
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => applyProgress((task.progress ?? 0) + 10)}
+                      disabled={(task.progress ?? 0) >= 100}
+                    >
+                      +10%
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="mr-1 text-[11px] text-muted-foreground">Quick:</span>
+                  {[0, 25, 50, 75, 100].map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="xs"
+                      variant={task.progress === preset ? "default" : "outline"}
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => applyProgress(preset)}
+                    >
+                      {preset}%
+                    </Button>
                   ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">{task.progress}%</span>
+                </div>
+              </div>
             )}
           </div>
 
