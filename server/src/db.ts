@@ -75,6 +75,12 @@ pool.on("error", (error) => {
   console.error(`[db] idle client dropped: ${error.message}`)
 })
 
+pool.on("connect", (client) => {
+  client.on("error", (error) => {
+    console.error(`[db] client socket error: ${error.message}`)
+  })
+})
+
 export interface SessionContext {
   /** public.users.id of the authenticated caller. */
   userId: number
