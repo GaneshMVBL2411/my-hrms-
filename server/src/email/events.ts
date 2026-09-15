@@ -34,17 +34,19 @@ interface Recipient {
 }
 
 /** Looks up who to write to. Runs without a session: this is server-initiated. */
-async function employeeRecipient(employeeId: number): Promise<Recipient | null> {
+async function employeeRecipient(employeeId: number, includeInactive = false): Promise<Recipient | null> {
   try {
     return await withoutSession(async (client) => {
       // A definer function, not a join: this connection has no session, and
       // under row level security it would otherwise see no employees at all —
       // which is how every employee-addressed email came to be skipped once.
+      // `includeInactive` is for the one mail that goes to someone just
+      // deactivated: the offboarding notice.
       const { rows } = await client.query<{
         email: string
         full_name: string
         company_id: number
-      }>("select email, full_name, company_id from public.email_recipient($1)", [employeeId])
+      }>("select email, full_name, company_id from public.email_recipient($1, $2)", [employeeId, includeInactive])
       const row = rows[0]
       return row ? { email: row.email, fullName: row.full_name, companyId: row.company_id } : null
     })
@@ -283,10 +285,13 @@ export function onPayrollProcessed(params: {
   period: string
   employeeCount: number
   processedBy: string
-  notify: string[]
+  /** Addresses to tell; the company's approvers when not given. */
+  notify?: string[]
 }): void {
   fireAndForget("payroll_processed", async () => {
-    const recipients = params.notify.filter(Boolean)
+    const recipients = params.notify
+      ? params.notify.filter(Boolean)
+      : (await approvers(params.companyId)).map((r) => r.email)
     if (recipients.length === 0) return
 
     enqueueBulk({
@@ -499,6 +504,55 @@ export function onLetterIssued(params: {
 }
 
 // -------------------------------------------------------------- documents
+/**
+ * A policy was published. Everyone at the company gets it, each addressed by
+ * name, on the document_shared template — a policy is a document shared with
+ * the whole company, and that is the mail that already says so.
+ */
+export function onPolicyPublished(params: {
+  policyId: number
+  companyId: number
+  title: string
+  version?: string | null
+  publishedBy?: string
+}): void {
+  fireAndForget("policy_published", async () => {
+    const audience = await withoutSession(async (client) => {
+      const { rows } = await client.query<{ email: string; full_name: string }>(
+        "select email, full_name from public.email_audience($1)",
+        [params.companyId]
+      )
+      return rows
+    })
+
+    const { accepted } = enqueueBulk({
+      recipients: audience.map((r) => ({
+        email: r.email,
+        data: {
+          employeeName: r.full_name,
+          documentName: params.title,
+          documentType: params.version ? `Policy · v${params.version}` : "Policy",
+          sharedByName: params.publishedBy ?? "",
+          sharedAt: new Date().toISOString().slice(0, 10),
+          path: "/documents",
+        },
+      })),
+      template: "document_shared",
+      companyId: params.companyId,
+    })
+
+    await logSecurityEvent(
+      "email.bulk_initiated",
+      "policies",
+      params.policyId,
+      { recipients: accepted, template: "document_shared" },
+      undefined,
+      undefined,
+      "success"
+    )
+  })
+}
+
 export function onDocumentShared(params: {
   documentId: number
   employeeId: number
@@ -535,7 +589,7 @@ export function onEmployeeOffboarding(params: {
   employeeCode?: string | null
 }): void {
   fireAndForget("employee_offboarding", async () => {
-    const employee = await employeeRecipient(params.employeeId)
+    const employee = await employeeRecipient(params.employeeId, true)
     if (!employee) return
 
     await sendTemplateEmail({

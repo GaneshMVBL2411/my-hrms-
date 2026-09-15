@@ -22,7 +22,20 @@ import {
   DeviceAuthError,
 } from "./deviceauth.js"
 import { emailRouter } from "./email/routes.js"
-import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted, onLetterIssued, onPayslipGenerated } from "./email/events.js"
+import {
+  onAnnouncementPublished,
+  onEmployeeCreated,
+  onEmployeeOffboarding,
+  onLeaveDecided,
+  onLeaveSubmitted,
+  onLetterIssued,
+  onPayrollProcessed,
+  onPayslipGenerated,
+  onPolicyPublished,
+  onProjectAssignment,
+  onTaskAssigned,
+  onTaskCompleted,
+} from "./email/events.js"
 import { buildLetter, LETTER_TITLES, letterFilename, renderLetterPdf, type LetterPayload } from "./letter-pdf.js"
 import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
@@ -340,6 +353,12 @@ app.post("/query", requireAuth, apiLimiter, async (req, res) => {
     const result = await withSession(req.user!, (client) =>
       runQuery(client, req.body as QueryRequest, req.user!.companyId)
     )
+
+    // The writes people expect an email from — a task handed to someone, a
+    // project joined, an announcement or policy published — arrive here as
+    // plain inserts. Read back by id so the mail describes the stored row.
+    await notifyForQuery(req.body as QueryRequest, result, req)
+
     res.json(result)
   } catch (error) {
     if (error instanceof QueryError) {
@@ -608,7 +627,7 @@ const CALLABLE = new Set([
  * inside the mail job, so a hundred-employee run answers as fast as before
  * and the rendering never holds the request open.
  */
-async function notifyPayslips(result: unknown, req: express.Request): Promise<void> {
+async function notifyPayslips(fn: string, result: unknown, req: express.Request): Promise<void> {
   const ids = (Array.isArray(result) ? result : [result]).map(Number).filter((n) => Number.isInteger(n) && n > 0)
   if (ids.length === 0 || req.user!.companyId === null) return
 
@@ -637,8 +656,236 @@ async function notifyPayslips(result: unknown, req: express.Request): Promise<vo
         }),
       })
     }
+
+    // The run itself, summarised for the approvers — a count, no figures.
+    if (fn === "generate_payslips_bulk" && rows[0]) {
+      onPayrollProcessed({
+        companyId: req.user!.companyId,
+        period: payslipPeriod(rows[0]),
+        employeeCount: rows.length,
+        processedBy: await displayName(req),
+      })
+    }
   } catch (error) {
     console.error("[email] payslip notification skipped:", (error as Error).message)
+  }
+}
+
+/** The signed-in person's name, for "assigned by" and "processed by" lines. */
+async function displayName(req: express.Request): Promise<string> {
+  try {
+    return await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{ name: string | null }>(
+        "select public.user_display_name($1) as name",
+        [req.user!.userId]
+      )
+      return rows[0]?.name ?? req.user!.email
+    })
+  } catch {
+    return req.user!.email
+  }
+}
+
+/**
+ * A task edited through update_task: handed to someone new, or finished.
+ *
+ * The patch says what changed and the row says what it changed to; both are
+ * needed, because "assigned_to in the patch" is the only way to tell a
+ * reassignment from an edit to the title of an already-assigned task.
+ */
+async function notifyTaskUpdate(result: unknown, req: express.Request): Promise<void> {
+  const id = Number(result)
+  const patch = (req.body as { p_patch?: Record<string, unknown> })?.p_patch ?? {}
+  if (!Number.isInteger(id) || req.user!.companyId === null) return
+  const reassigned = "assigned_to" in patch && patch.assigned_to !== null && patch.assigned_to !== ""
+  const completed = patch.status === "completed"
+  if (!reassigned && !completed) return
+
+  try {
+    const row = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{
+        title: string
+        project_name: string | null
+        assigned_to: number | null
+        priority: string | null
+        due_date: string | null
+        status: string
+        created_by: number
+      }>(
+        `select title, project_name, assigned_to, priority, due_date, status, created_by
+           from public.task_directory where id = $1`,
+        [id]
+      )
+      return rows[0] ?? null
+    })
+    if (!row) return
+    const by = await displayName(req)
+
+    if (reassigned && row.assigned_to !== null) {
+      onTaskAssigned({
+        taskId: id,
+        employeeId: row.assigned_to,
+        companyId: req.user!.companyId,
+        taskTitle: row.title,
+        projectName: row.project_name,
+        dueDate: row.due_date,
+        priority: row.priority,
+        assignedByName: by,
+      })
+    }
+    if (completed && row.status === "completed") {
+      // Back to whoever created it, unless they are the one finishing it.
+      if (row.created_by === req.user!.userId) return
+      const creator = await withSession(req.user!, async (client) => {
+        const { rows } = await client.query<{ email: string }>("select email from public.email_user($1)", [row.created_by])
+        return rows[0]?.email ?? null
+      })
+      if (!creator) return
+      onTaskCompleted({
+        taskId: id,
+        companyId: req.user!.companyId,
+        taskTitle: row.title,
+        projectName: row.project_name,
+        completedByName: by,
+        notify: [creator],
+      })
+    }
+  } catch (error) {
+    console.error("[email] task notification skipped:", (error as Error).message)
+  }
+}
+
+/** deactivate_employee(p_id) succeeded: the person is told, at their address, today. */
+async function notifyOffboarding(req: express.Request): Promise<void> {
+  const employeeId = Number((req.body as { p_id?: unknown })?.p_id)
+  if (!Number.isInteger(employeeId) || req.user!.companyId === null) return
+  try {
+    const code = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{ employee_code: string | null }>(
+        "select employee_code from public.employees where id = $1",
+        [employeeId]
+      )
+      return rows[0]?.employee_code ?? null
+    })
+    onEmployeeOffboarding({
+      employeeId,
+      companyId: req.user!.companyId,
+      lastWorkingDay: new Date().toISOString().slice(0, 10),
+      employeeCode: code,
+    })
+  } catch (error) {
+    console.error("[email] offboarding notification skipped:", (error as Error).message)
+  }
+}
+
+/**
+ * Inserts through /query that someone should hear about.
+ *
+ * Only inserts, and only four tables. An update to an announcement's typo is
+ * not a second announcement, and a task edit goes through update_task, which
+ * has its own notice above.
+ */
+async function notifyForQuery(body: QueryRequest, result: unknown, req: express.Request): Promise<void> {
+  if (body.action !== "insert" || req.user!.companyId === null) return
+  const companyId = req.user!.companyId
+  const data = (result as { data?: unknown })?.data
+  const rows = (Array.isArray(data) ? data : data ? [data] : []) as Record<string, unknown>[]
+  if (rows.length === 0) return
+
+  try {
+    switch (body.table) {
+      case "announcements": {
+        const by = await displayName(req)
+        for (const id of rows.map((r) => Number(r.id)).filter(Number.isInteger)) {
+          const a = await withSession(req.user!, async (client) => {
+            const { rows } = await client.query<{ title: string; body: string }>(
+              "select title, body from public.announcements where id = $1",
+              [id]
+            )
+            return rows[0] ?? null
+          })
+          if (a) onAnnouncementPublished({ announcementId: id, companyId, title: a.title, body: a.body, postedBy: by })
+        }
+        return
+      }
+      case "policies": {
+        const by = await displayName(req)
+        for (const id of rows.map((r) => Number(r.id)).filter(Number.isInteger)) {
+          const p = await withSession(req.user!, async (client) => {
+            const { rows } = await client.query<{ title: string; version: string | null }>(
+              "select title, version from public.policies where id = $1",
+              [id]
+            )
+            return rows[0] ?? null
+          })
+          if (p) onPolicyPublished({ policyId: id, companyId, title: p.title, version: p.version, publishedBy: by })
+        }
+        return
+      }
+      case "tasks": {
+        const by = await displayName(req)
+        for (const id of rows.map((r) => Number(r.id)).filter(Number.isInteger)) {
+          const t = await withSession(req.user!, async (client) => {
+            const { rows } = await client.query<{
+              title: string
+              project_name: string | null
+              assigned_to: number | null
+              priority: string | null
+              due_date: string | null
+            }>(
+              "select title, project_name, assigned_to, priority, due_date from public.task_directory where id = $1",
+              [id]
+            )
+            return rows[0] ?? null
+          })
+          if (t?.assigned_to !== null && t?.assigned_to !== undefined) {
+            onTaskAssigned({
+              taskId: id,
+              employeeId: t.assigned_to,
+              companyId,
+              taskTitle: t.title,
+              projectName: t.project_name,
+              dueDate: t.due_date,
+              priority: t.priority,
+              assignedByName: by,
+            })
+          }
+        }
+        return
+      }
+      case "project_members": {
+        // The insert returns whatever columns were asked for, which for a
+        // membership is usually nothing useful; the payload has the pair.
+        const raw = Array.isArray(body.payload) ? body.payload : body.payload ? [body.payload] : []
+        for (const m of raw) {
+          const projectId = Number(m.project_id)
+          const employeeId = Number(m.employee_id)
+          if (!Number.isInteger(projectId) || !Number.isInteger(employeeId)) continue
+          const p = await withSession(req.user!, async (client) => {
+            const { rows } = await client.query<{ name: string; deadline: string | null }>(
+              "select name, deadline from public.projects where id = $1",
+              [projectId]
+            )
+            return rows[0] ?? null
+          })
+          if (p) {
+            onProjectAssignment({
+              projectId,
+              employeeId,
+              companyId,
+              projectName: p.name,
+              roleInProject: typeof m.role_in_project === "string" ? m.role_in_project : null,
+              deadline: p.deadline,
+            })
+          }
+        }
+        return
+      }
+      default:
+        return
+    }
+  } catch (error) {
+    console.error("[email] insert notification skipped:", (error as Error).message)
   }
 }
 
@@ -691,10 +938,16 @@ async function notifyLetter(result: unknown, req: express.Request): Promise<void
  */
 async function notifyForRpc(fn: string, result: unknown, req: express.Request): Promise<void> {
   if (fn === "generate_payslip" || fn === "generate_payslips_bulk") {
-    return notifyPayslips(result, req)
+    return notifyPayslips(fn, result, req)
   }
   if (fn === "generate_letter") {
     return notifyLetter(result, req)
+  }
+  if (fn === "update_task") {
+    return notifyTaskUpdate(result, req)
+  }
+  if (fn === "deactivate_employee") {
+    return notifyOffboarding(req)
   }
   if (fn !== "apply_leave" && fn !== "decide_leave_request") return
 
