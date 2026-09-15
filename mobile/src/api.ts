@@ -210,16 +210,16 @@ export async function fileSource(
 }
 
 /**
- * The payslip as a PDF, base64 so it can be written straight to a file.
+ * A PDF the server draws — a payslip, a letter — as bytes to write to a file.
  *
- * Drawn on the server, the same file the web downloads and the email carries,
- * so a payslip looks the same wherever it came from. The token goes in the
- * header as everywhere else; `/payslips/:id/pdf` reads under the session, so
- * an employee gets their own and a 404 for anyone else's.
+ * The same file the web downloads and the email carries, so a document looks
+ * the same wherever it came from. The token goes in the header as everywhere
+ * else; the routes read under the session, so an employee gets their own and
+ * a 404 for anyone else's.
  */
-export async function payslipPdf(id: number): Promise<ArrayBuffer> {
+async function fetchPdf(path: string, missing: string): Promise<ArrayBuffer> {
   const token = await getToken()
-  const res = await fetch(`${API_URL}/payslips/${id}/pdf`, {
+  const res = await fetch(`${API_URL}${path}`, {
     headers: {
       "ngrok-skip-browser-warning": "1",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -230,10 +230,13 @@ export async function payslipPdf(id: number): Promise<ArrayBuffer> {
       await setToken(null)
       unauthorizedHandler?.()
     }
-    throw new ApiError(res.status === 404 ? "This payslip is not available." : res.statusText, res.status)
+    throw new ApiError(res.status === 404 ? missing : res.statusText, res.status)
   }
   return res.arrayBuffer()
 }
+
+export const payslipPdf = (id: number) => fetchPdf(`/payslips/${id}/pdf`, "This payslip is not available.")
+export const letterPdf = (id: number) => fetchPdf(`/letters/${id}/pdf`, "This letter is not available.")
 
 /** Today's row for the signed-in employee, or null before the first punch. */
 /**

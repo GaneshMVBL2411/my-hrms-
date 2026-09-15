@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { fetchApiBlob, supabase } from "@/lib/supabase"
 import { unwrap, unwrapVoid } from "@/lib/errors"
 import { definedOnly } from "@/lib/case"
 import type {
@@ -63,4 +63,22 @@ export async function listLetters(): Promise<GeneratedLetter[]> {
 
 export async function viewLetter(id: number): Promise<LetterPayload> {
   return unwrap<LetterPayload>(await supabase.rpc("get_letter_view", { p_id: id }))
+}
+
+/**
+ * Saves the letter PDF the server draws — the same file the employee was
+ * emailed when it was issued, and the one the phone saves — rather than a
+ * screenshot of the dialog. `get_letter_view` decides who may have it.
+ */
+export async function downloadLetterPdf(id: number, filename: string): Promise<void> {
+  const blob = await fetchApiBlob(`/letters/${id}/pdf`)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked on the next tick: revoking synchronously races the click in Safari.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

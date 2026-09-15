@@ -33,6 +33,7 @@ export type TemplateName =
   | "project_assignment"
   | "announcement"
   | "document_shared"
+  | "letter_issued"
   | "employee_offboarding"
   | "hrms_invitation"
   | "smtp_test"
@@ -432,6 +433,32 @@ ${button("Open the document", s(d, "actionUrl"))}
       text: plain(heading, [
         `${s(d, "sharedByName") || "Your HR team"} shared "${s(d, "documentName")}" with you.`,
         `Open it here: ${s(d, "actionUrl")}`,
+      ], b.companyName),
+    }
+  },
+
+  // 15b --------------------------------------------------------------------
+  letter_issued: (d, b) => {
+    const title = s(d, "title") || "letter"
+    const attached = !!s(d, "attached")
+    const heading = `Your ${title}`
+    const body = `<p style="margin:0 0 6px">Hello ${esc(s(d, "employeeName"))},</p>
+<p style="margin:0 0 6px">${esc(b.companyName)} has issued your <strong>${esc(title)}</strong>${
+      attached ? ", attached to this email as a PDF" : ""
+    }. You can also open and download it any time from the Documents section of the HR portal or the mobile app.</p>
+${button("View letter", s(d, "actionUrl"))}
+<p style="margin:0;font-size:13px;color:#64748b">${
+      attached
+        ? "Please keep this letter for your records."
+        : "The letter is not attached to this email. Sign in to view and download it."
+    }</p>`
+    return {
+      subject: `${title} — ${b.companyName}`,
+      html: layout(b, heading, body),
+      text: plain(heading, [
+        `Hello ${s(d, "employeeName")},`,
+        `${b.companyName} has issued your ${title}${attached ? ", attached as a PDF" : ""}.`,
+        `You can also view and download it here: ${s(d, "actionUrl")}`,
       ], b.companyName),
     }
   },

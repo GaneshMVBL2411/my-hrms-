@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useForm, useWatch, Controller } from "react-hook-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -70,6 +71,19 @@ export function DocumentsPage() {
   const [editingPolicy, setEditingPolicy] = useState<Policy | undefined>(undefined)
   const [letter, setLetter] = useState<LetterPayload | null>(null)
   const [viewingLetterId, setViewingLetterId] = useState<number | null>(null)
+
+  // The "View letter" button in the letter email lands on /documents?letter=ID.
+  // Opened once on arrival and the parameter dropped, so closing the dialog
+  // does not leave a URL that reopens it on refresh.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const id = Number(searchParams.get("letter"))
+    if (!Number.isInteger(id) || id <= 0) return
+    setViewingLetterId(id)
+    const next = new URLSearchParams(searchParams)
+    next.delete("letter")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const { data: policies, isLoading: loadingPolicies } = useQuery({
     queryKey: ["policies"],

@@ -22,7 +22,8 @@ import {
   DeviceAuthError,
 } from "./deviceauth.js"
 import { emailRouter } from "./email/routes.js"
-import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted, onPayslipGenerated } from "./email/events.js"
+import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted, onLetterIssued, onPayslipGenerated } from "./email/events.js"
+import { buildLetter, LETTER_TITLES, letterFilename, renderLetterPdf, type LetterPayload } from "./letter-pdf.js"
 import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
   loginBlocked,
@@ -485,6 +486,42 @@ app.get("/payslips/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
   res.send(pdf)
 })
 
+/**
+ * A generated letter as a PDF. `get_letter_view` does the authorising — an
+ * employee gets their own letters, HR the company's, anyone else "Letter not
+ * found" — so the route only has to draw what it is handed. The same file
+ * goes out as the email attachment when the letter is issued.
+ */
+app.get("/letters/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid letter id" })
+
+  let payload: LetterPayload | null
+  try {
+    payload = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{ result: LetterPayload | null }>(
+        "select public.get_letter_view($1) as result",
+        [id]
+      )
+      return rows[0]?.result ?? null
+    })
+  } catch (error) {
+    const err = error as { code?: string }
+    if (err.code === "P0002" || err.code === "42501") return res.status(404).json({ error: "Not found" })
+    throw error
+  }
+  if (!payload) return res.status(404).json({ error: "Not found" })
+
+  const doc = buildLetter(payload)
+  const pdf = await renderLetterPdf(doc)
+  res.setHeader("Content-Type", "application/pdf")
+  res.setHeader("Content-Disposition", `attachment; filename="${letterFilename(payload.letter_type, doc)}"`)
+  res.setHeader("Content-Security-Policy", "default-src 'none'")
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  res.setHeader("Cache-Control", "private, no-store")
+  res.send(pdf)
+})
+
 app.get("/rest/:table", requireAuth, apiLimiter, async (req, res) => {
   // Express 5 types a route param as string | string[], because a wildcard can
   // capture several segments. Anything but a plain string is not a table name.
@@ -606,6 +643,45 @@ async function notifyPayslips(result: unknown, req: express.Request): Promise<vo
 }
 
 /**
+ * Mails a letter HR just issued — offer, joining, appointment, any of them —
+ * to the employee it is addressed to, from the phone or the portal alike.
+ *
+ * `generate_letter` returns the resolved payload, which is everything the
+ * letter is built from; only the employee it belongs to has to be looked up,
+ * because the payload names the person and not the row.
+ */
+async function notifyLetter(result: unknown, req: express.Request): Promise<void> {
+  const payload = result as LetterPayload | null
+  if (!payload || !Number.isInteger(payload.id) || req.user!.companyId === null) return
+
+  try {
+    const employeeId = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<{ employee_id: number }>(
+        "select employee_id from public.generated_letters where id = $1",
+        [payload.id]
+      )
+      return rows[0]?.employee_id ?? null
+    })
+    if (employeeId === null) return
+
+    const doc = buildLetter(payload)
+    onLetterIssued({
+      letterId: payload.id,
+      employeeId,
+      companyId: req.user!.companyId,
+      title: LETTER_TITLES[payload.letter_type],
+      attachment: async () => ({
+        filename: letterFilename(payload.letter_type, doc),
+        content: await renderLetterPdf(doc),
+        contentType: "application/pdf",
+      }),
+    })
+  } catch (error) {
+    console.error("[email] letter notification skipped:", (error as Error).message)
+  }
+}
+
+/**
  * Turns a completed RPC into an email, for the handful worth one.
  *
  * Deliberately reads the row back instead of trusting the arguments: the
@@ -616,6 +692,9 @@ async function notifyPayslips(result: unknown, req: express.Request): Promise<vo
 async function notifyForRpc(fn: string, result: unknown, req: express.Request): Promise<void> {
   if (fn === "generate_payslip" || fn === "generate_payslips_bulk") {
     return notifyPayslips(result, req)
+  }
+  if (fn === "generate_letter") {
+    return notifyLetter(result, req)
   }
   if (fn !== "apply_leave" && fn !== "decide_leave_request") return
 

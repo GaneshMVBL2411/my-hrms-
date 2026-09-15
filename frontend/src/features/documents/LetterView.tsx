@@ -5,7 +5,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { PrintDocument } from "@/components/shared/PrintDocument"
 import { useAuth } from "@/features/auth/AuthContext"
-import { downloadElementAsPdf } from "@/lib/pdf"
+import { downloadLetterPdf } from "@/features/documents/api"
 import type { LetterPayload } from "@/features/documents/types"
 
 /**
@@ -534,14 +534,15 @@ export function LetterView({
 
   if (!letter) return null
 
+  // The server's PDF rather than a render of this dialog, so the download,
+  // the phone's download and the emailed copy are one file, not three.
   const handleDownload = async () => {
-    if (!printRef.current) return
     setDownloading(true)
     try {
-      const filename = `${letter.letterType}_letter_${letter.employeeCode}.pdf`
-      await downloadElementAsPdf(printRef.current, filename)
+      const title = TITLE[letter.letterType].replace(/[^A-Za-z0-9]+/g, "_")
+      await downloadLetterPdf(letter.id, `${title}_${letter.employeeCode}.pdf`)
     } catch {
-      toast.error("Could not generate PDF")
+      toast.error("Could not download the letter")
     } finally {
       setDownloading(false)
     }

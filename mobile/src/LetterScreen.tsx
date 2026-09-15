@@ -12,11 +12,11 @@ import {
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
-import * as Print from "expo-print"
-import { savePdf } from "./download"
+import { savePdf, toBase64 } from "./download"
 import {
   employeeOptions,
   generateLetter,
+  letterPdf,
   viewLetter,
   type EmployeeOption,
   type LetterPayload,
@@ -24,7 +24,6 @@ import {
 } from "./api"
 import {
   buildLetter,
-  letterAsHtml,
   DEFAULT_NOTICE_PERIOD,
   DEFAULT_PROBATION,
   LETTER_CHOICES,
@@ -86,21 +85,19 @@ export function LetterDocumentModal({
 
   const doc = useMemo(() => (payload ? buildLetter(payload) : null), [payload])
 
-  /** Saves the letter as a PDF — see download.ts for how "directly" works per platform. */
+  /**
+   * Saves the letter as a PDF — the server's, which is the same file the
+   * employee was emailed when it was issued. See download.ts for how
+   * "directly" works per platform.
+   */
   async function download() {
-    if (!doc || saving) return
+    if (!doc || !payload || saving) return
     setSaving(true)
     try {
-      const name = `${doc.title.replace(/[^A-Za-z0-9]+/g, "_")}_${
+      const name = `${LETTER_TITLES[payload.letter_type].replace(/[^A-Za-z0-9]+/g, "_")}_${
         doc.employeeCode || doc.employeeName.replace(/[^A-Za-z0-9]+/g, "_")
       }.pdf`
-      // The bytes come back with the file rather than being read from it
-      // afterwards. printToFileAsync writes into the print module's own cache
-      // directory, which is outside the sandbox the file-system module will
-      // read from — reading it back failed with "isn't readable", and the fix
-      // is not to widen the sandbox but to stop needing the read.
-      const printed = await Print.printToFileAsync({ html: letterAsHtml(doc), base64: true })
-      await savePdf(printed.base64 ?? "", name, printed.uri)
+      await savePdf(toBase64(await letterPdf(payload.id)), name)
     } catch (e) {
       Alert.alert("Not saved", (e as Error).message || "The letter could not be saved.")
     } finally {

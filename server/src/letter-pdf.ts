@@ -1,21 +1,42 @@
-import type { LetterPayload, LetterType } from "./api"
+import PDFDocument from "pdfkit"
 
 /**
- * A generated letter, turned into the document that gets read.
+ * A generated letter, turned into the document that gets read — and mailed.
  *
- * The wording lives here rather than in the screen, and it is deliberately the
- * same wording as the portal's LetterView. A letter is a legal-ish artefact: an
- * offer issued from a phone and the same offer re-opened on the web have to say
- * the same thing, or the company has quietly issued two different documents.
- * Keeping this a pure function of the payload — no components, no styles — is
- * what makes that easy to check. The PDF that is downloaded and emailed is
- * drawn by the server from its own copy of this wording (letter-pdf.ts).
+ * The wording below is the mobile app's `letters.ts`, copied rather than
+ * shared, because the three code bases do not share a package and a letter
+ * that reaches an employee's mailbox must say exactly what the screen said
+ * when HR issued it. When the wording changes, it changes in both.
  *
- * The structure follows the Word templates in `Letterhead template design`,
- * which all share one shape: title, recipient, subject, salutation, body, a
- * details table, a closing, and a signature block that the two countersigned
- * letters give a second column to.
+ * Standard PDF fonts have no rupee glyph, so this copy prints "Rs." where
+ * the screen prints "₹". That is the only difference.
  */
+
+export type LetterType =
+  | "offer" | "appointment" | "joining" | "experience" | "relieving" | "certificate"
+  | "internship" | "promotion" | "appraisal" | "confirmation" | "warning" | "termination"
+
+/** What `letter_payload` / `get_letter_view` return. */
+export interface LetterPayload {
+  id: number
+  letter_type: LetterType
+  employee_name: string
+  employee_code: string
+  employee_address: string | null
+  designation_title: string | null
+  department_name: string | null
+  joining_date: string | null
+  reporting_manager_name: string | null
+  annual_ctc: number | string | null
+  probation_text: string | null
+  notice_period_text: string | null
+  custom_message: string | null
+  company_name: string
+  company_address: string | null
+  company_code: string | null
+  today: string
+  generated_at: string
+}
 
 export const LETTER_TITLES: Record<LetterType, string> = {
   offer: "Letter of Offer",
@@ -31,21 +52,6 @@ export const LETTER_TITLES: Record<LetterType, string> = {
   warning: "Formal Warning Notice",
   termination: "Letter of Termination",
 }
-
-export const LETTER_CHOICES: { value: LetterType; label: string }[] = [
-  { value: "offer", label: "Offer Letter" },
-  { value: "joining", label: "Joining Letter (Reporting for Duty)" },
-  { value: "appointment", label: "Appointment Letter" },
-  { value: "confirmation", label: "Probation Confirmation" },
-  { value: "promotion", label: "Promotion & Increment" },
-  { value: "appraisal", label: "Salary Appraisal Letter" },
-  { value: "internship", label: "Internship Offer" },
-  { value: "experience", label: "Experience Certificate" },
-  { value: "relieving", label: "Relieving Letter" },
-  { value: "certificate", label: "Employment Certificate" },
-  { value: "warning", label: "Warning Notice" },
-  { value: "termination", label: "Termination Letter" },
-]
 
 /** The reference-line abbreviation, matching the templates: WPL/HR/OFR/2026/001 */
 const REF_ABBREV: Record<LetterType, string> = {
@@ -120,7 +126,7 @@ function formatDate(value: string): string {
 function money(value: number | string): string {
   const n = Number(value)
   if (!Number.isFinite(n)) return "As per company policy"
-  return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 }) + " per annum"
+  return "Rs. " + n.toLocaleString("en-IN", { maximumFractionDigits: 0 }) + " per annum"
 }
 
 export function buildLetter(letter: LetterPayload): LetterDoc {
@@ -503,4 +509,112 @@ export function buildLetter(letter: LetterPayload): LetterDoc {
     employeeName: letter.employee_name,
     employeeCode: letter.employee_code,
   }
+}
+
+/** `Letter_of_Offer_WP-1005.pdf` — the name the phone and the web both save under. */
+export function letterFilename(type: LetterType, doc: LetterDoc): string {
+  const title = LETTER_TITLES[type].replace(/[^A-Za-z0-9]+/g, "_")
+  const who = doc.employeeCode || doc.employeeName.replace(/[^A-Za-z0-9]+/g, "_")
+  return `${title}_${who}.pdf`
+}
+
+// ------------------------------------------------------------------ drawing
+
+const INK = "#14201a"
+const MUTED = "#5a6b62"
+const BRAND = "#0f4c34"
+const RULE = "#d6e0da"
+
+/**
+ * The same page the phone prints from `letterAsHtml`: centred letterhead, a
+ * rule, the reference row, the title, and the letter in a serif face.
+ * pdfkit flows text and breaks pages itself; the signature block is the one
+ * thing kept together, because a signature stranded on its own page is the
+ * layout fault that makes a letter look unofficial.
+ */
+export function renderLetterPdf(doc: LetterDoc): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const pdf = new PDFDocument({
+      size: "A4",
+      margins: { top: 51, bottom: 51, left: 45, right: 45 },
+      info: { Title: `${doc.title} — ${doc.employeeName}`, Author: doc.companyName },
+    })
+    const chunks: Buffer[] = []
+    pdf.on("data", (c: Buffer) => chunks.push(c))
+    pdf.on("end", () => resolve(Buffer.concat(chunks)))
+    pdf.on("error", reject)
+
+    const left = pdf.page.margins.left
+    const width = pdf.page.width - left - pdf.page.margins.right
+    const para = (text: string, opts: PDFKit.Mixins.TextOptions = {}) =>
+      pdf.font("Times-Roman").fontSize(11).fillColor(INK).text(text, left, undefined, { width, align: "justify", lineGap: 3, paragraphGap: 9, ...opts })
+
+    // Letterhead
+    pdf.font("Times-Bold").fontSize(14).fillColor(BRAND).text(doc.companyName, left, pdf.y, { width, align: "center", characterSpacing: 0.3 })
+    if (doc.companyAddress) {
+      pdf.font("Times-Roman").fontSize(8.5).fillColor(MUTED).text(doc.companyAddress, { width, align: "center" })
+    }
+    pdf.moveDown(0.5)
+    pdf.moveTo(left, pdf.y).lineTo(left + width, pdf.y).lineWidth(1.6).strokeColor(BRAND).stroke()
+    pdf.moveDown(0.8)
+
+    const refY = pdf.y
+    pdf.font("Times-Roman").fontSize(8.5).fillColor(MUTED).text(doc.refLine, left, refY, { width: width / 2, lineBreak: false })
+    pdf.text(doc.dateLine, left + width / 2, refY, { width: width / 2, align: "right", lineBreak: false })
+    pdf.y = refY + 12
+
+    pdf.moveDown(1.2)
+    pdf.font("Times-Bold").fontSize(12).fillColor(BRAND).text(doc.title.toUpperCase(), left, pdf.y, { width, align: "center", characterSpacing: 0.6 })
+    pdf.moveDown(1)
+
+    if (doc.recipient) {
+      pdf.font("Times-Bold").fontSize(10.5).fillColor(INK).text(doc.recipient.name, left, pdf.y, { width })
+      if (doc.recipient.address) pdf.font("Times-Roman").fontSize(10).fillColor(MUTED).text(doc.recipient.address, { width })
+      pdf.moveDown(0.8)
+    }
+    if (doc.subject) {
+      pdf.font("Times-Bold").fontSize(11).fillColor(INK).text(`Subject: ${doc.subject}`, left, pdf.y, { width })
+      pdf.moveDown(0.8)
+    }
+
+    para(doc.salutation, { align: "left" })
+    for (const p of doc.body) para(p)
+
+    if (doc.details.length) {
+      const rowH = 20
+      const tableH = rowH * doc.details.length
+      if (pdf.y + tableH > pdf.page.height - pdf.page.margins.bottom) pdf.addPage()
+      let y = pdf.y + 4
+      pdf.rect(left, y, width, tableH).lineWidth(0.5).strokeColor(RULE).stroke()
+      for (const d of doc.details) {
+        pdf.font("Times-Roman").fontSize(10).fillColor(MUTED).text(d.label, left + 8, y + 5, { width: width * 0.45, lineBreak: false })
+        pdf.font("Times-Bold").fontSize(10).fillColor(INK).text(d.value, left + width * 0.45, y + 5, { width: width * 0.55 - 8, align: "right", lineBreak: false })
+        y += rowH
+        if (d !== doc.details[doc.details.length - 1]) pdf.moveTo(left, y).lineTo(left + width, y).lineWidth(0.5).strokeColor(RULE).stroke()
+      }
+      pdf.y = y + 12
+    }
+
+    if (doc.closing) para(doc.closing)
+    if (doc.note) pdf.font("Times-Italic").fontSize(11).fillColor("#444f49").text(doc.note, left, pdf.y, { width, lineGap: 3, paragraphGap: 9 })
+
+    // Signature block, kept off a page break
+    const signH = 90 + (doc.countersignedBy ? 80 : 0)
+    if (pdf.y + signH > pdf.page.height - pdf.page.margins.bottom) pdf.addPage()
+    pdf.moveDown(1.5)
+    pdf.font("Times-Roman").fontSize(11).fillColor(INK).text(doc.signOff, left, pdf.y, { width })
+    pdf.moveDown(2.6)
+    pdf.font("Times-Bold").fontSize(11).text("Authorised Signatory", left, pdf.y, { width })
+    pdf.font("Times-Roman").fontSize(9).fillColor(MUTED).text("Designated Partner / Head — Human Resources", left, pdf.y, { width })
+
+    if (doc.countersignedBy) {
+      pdf.moveDown(2)
+      pdf.font("Times-Roman").fontSize(11).fillColor(INK).text("Accepted and agreed", left, pdf.y, { width })
+      pdf.moveDown(2.6)
+      pdf.font("Times-Bold").fontSize(11).text(doc.countersignedBy, left, pdf.y, { width })
+      pdf.font("Times-Roman").fontSize(9).fillColor(MUTED).text("Signature / Date", left, pdf.y, { width })
+    }
+
+    pdf.end()
+  })
 }

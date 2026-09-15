@@ -445,6 +445,59 @@ export function onAnnouncementPublished(params: {
   })
 }
 
+// ---------------------------------------------------------------- letters
+/**
+ * HR issued a letter — an offer, a joining confirmation, an appointment, a
+ * relieving letter — and the employee it is addressed to gets it by mail,
+ * with the PDF attached. The letter is the document; a mail that only says
+ * one exists would send them to the portal to fetch what could have been in
+ * their hand. The same file is what the portal and the phone download.
+ */
+export function onLetterIssued(params: {
+  letterId: number
+  employeeId: number
+  companyId: number
+  title: string
+  attachment?: () => Promise<Attachment>
+}): void {
+  fireAndForget("letter_issued", async () => {
+    const employee = await employeeRecipient(params.employeeId)
+    if (!employee) return
+
+    let attachments: Attachment[] | undefined
+    if (params.attachment) {
+      try {
+        attachments = [await params.attachment()]
+      } catch (error) {
+        console.error("[email:event] letter PDF not attached:", (error as Error).message)
+      }
+    }
+
+    await sendTemplateEmail({
+      to: employee.email,
+      template: "letter_issued",
+      companyId: params.companyId,
+      data: {
+        employeeName: employee.fullName,
+        title: params.title,
+        attached: attachments ? "yes" : "",
+        path: `/documents?letter=${params.letterId}`,
+      },
+      attachments,
+    })
+
+    await logSecurityEvent(
+      "email.letter_sent",
+      "generated_letters",
+      params.letterId,
+      { employee_id: params.employeeId },
+      undefined,
+      undefined,
+      "success"
+    )
+  })
+}
+
 // -------------------------------------------------------------- documents
 export function onDocumentShared(params: {
   documentId: number
