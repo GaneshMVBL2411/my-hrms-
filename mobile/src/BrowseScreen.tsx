@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { applyLeave, leaveTypes, rpc, select, updateTask, type LeaveType, type LetterPayload, type SessionUser } from "./api"
 import { GenerateLetterSheet, LetterDocumentModal } from "./LetterScreen"
+import { DetailSheet, type DetailView } from "./DetailSheet"
 import { SECTIONS, type RowAction, type RowView, type SectionDef, type Tone } from "./sections"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
@@ -251,6 +252,7 @@ function SectionList({
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState("")
   const [actionOpen, setActionOpen] = useState(initialActionOpen ?? false)
+  const [viewingDetail, setViewingDetail] = useState<DetailView | null>(null)
 
   useEffect(() => {
     if (initialActionOpen) {
@@ -403,14 +405,18 @@ function SectionList({
                     ? () => setViewingAnnouncement(item.raw)
                     : section.key === "tasks"
                       ? () => setViewingTask(item.raw)
-                      : item.actions.length
-                        ? () => offer(item.raw, item.actions)
-                        : undefined
+                      : section.detail
+                        ? () => setViewingDetail(section.detail!(item.raw))
+                        : item.actions.length
+                          ? () => offer(item.raw, item.actions)
+                          : undefined
               }
             />
           )}
         />
       )}
+
+      <DetailSheet view={viewingDetail} onClose={() => setViewingDetail(null)} />
 
       {asking && (
         <NotePrompt

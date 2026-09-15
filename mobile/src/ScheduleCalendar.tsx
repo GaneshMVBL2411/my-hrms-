@@ -14,7 +14,16 @@ import {
 import { Ionicons } from "@expo/vector-icons"
 import { rpc, createCompanyEvent, deleteCompanyEvent, type SessionUser } from "./api"
 import { scale, FONT_SCALE_CAP } from "./ui"
+import { DetailSheet } from "./DetailSheet"
 import { useStyles, useTheme, type Palette } from "./theme"
+
+/** "Thursday, 10 September 2026" — the way a person says a date. */
+function longDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00")
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+}
 
 export interface CalendarEvent {
   id?: number | string
@@ -68,6 +77,7 @@ export function ScheduleCalendar({
   })
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null)
   const [loading, setLoading] = useState(false)
 
   // Event modal state
@@ -473,7 +483,17 @@ export function ScheduleCalendar({
             {selectedEvents.map((ev, i) => {
               const theme = TYPE_COLORS[ev.type] || TYPE_COLORS.event
               return (
-                <View key={i} style={styles.agendaRow}>
+                // A row opens the event: the list has room for a title and a
+                // line, and a meeting's description is usually longer than
+                // that. The delete control inside stays its own target.
+                <TouchableOpacity
+                  key={i}
+                  style={styles.agendaRow}
+                  activeOpacity={0.75}
+                  onPress={() => setViewingEvent(ev)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${ev.title}`}
+                >
                   <View style={[styles.agendaTypeDot, { backgroundColor: theme.dot }]} />
                   <View style={{ flex: 1 }}>
                     <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.agendaEventTitle}>
@@ -502,12 +522,26 @@ export function ScheduleCalendar({
                       </TouchableOpacity>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               )
             })}
           </View>
         )}
       </View>
+
+      <DetailSheet
+        view={
+          viewingEvent
+            ? {
+                title: viewingEvent.title,
+                badge: (TYPE_COLORS[viewingEvent.type] || TYPE_COLORS.event).label,
+                subtitle: [longDate(viewingEvent.date), viewingEvent.timeSlot].filter(Boolean).join(" · "),
+                body: viewingEvent.description,
+              }
+            : null
+        }
+        onClose={() => setViewingEvent(null)}
+      />
 
       {/* Real Event Creation Modal */}
       <Modal visible={eventModalOpen} transparent animationType="slide" onRequestClose={() => setEventModalOpen(false)} statusBarTranslucent>

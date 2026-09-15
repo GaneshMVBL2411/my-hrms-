@@ -1,4 +1,5 @@
 import { decideLeave, updateTask, type SelectOptions } from "./api"
+import type { DetailView } from "./DetailSheet"
 import { LETTER_TITLES } from "./letters"
 import type { MotionName } from "./motion"
 
@@ -81,6 +82,16 @@ export interface SectionDef {
    *  decides regardless, this only avoids showing a tile that will refuse. */
   roles?: string[]
   row: (r: Record<string, any>) => RowView
+  /**
+   * What a row opens into when tapped.
+   *
+   * A row is a title, a line and a badge, which is the right amount for a
+   * list and the wrong amount for a policy, a payslip or a project — the
+   * first sentence of a document, a net figure with its breakdown hidden.
+   * Sections that define this get a tappable row and a full view; sections
+   * that do not are ones where the row already is the whole record.
+   */
+  detail?: (r: Record<string, any>) => DetailView
   /** Offered on tap. Omitted where a row is a record rather than a decision. */
   rowActions?: (r: Record<string, any>) => RowAction[]
   /**
@@ -336,8 +347,12 @@ export const SECTIONS: SectionDef[] = [
     empty: "No payslips yet.",
     table: "payslip_detail",
     query: {
-      columns: "id, employee_name, month, year, gross_pay, net_pay",
-      order: [{ column: "year", ascending: false }],
+      columns:
+        "id, employee_name, employee_code, designation_title, department_name, month, year, basic, hra, special_allowance, gross_pay, pf_deduction, esi_deduction, professional_tax, net_pay, generated_at",
+      order: [
+        { column: "year", ascending: false },
+        { column: "month", ascending: false },
+      ],
       limit: 60,
     },
     row: (r) => ({
@@ -345,6 +360,23 @@ export const SECTIONS: SectionDef[] = [
       subtitle: r.employee_name,
       meta: rupees(r.net_pay),
       badge: `gross ${rupees(r.gross_pay)}`,
+    }),
+    detail: (r) => ({
+      title: `${MONTHS[(Number(r.month) || 1) - 1]} ${r.year}`,
+      subtitle: [r.employee_name, r.employee_code, r.designation_title].filter(Boolean).join(" · "),
+      badge: `net ${rupees(r.net_pay)}`,
+      fields: [
+        { label: "Basic", value: rupees(r.basic) },
+        { label: "HRA", value: rupees(r.hra) },
+        { label: "Special allowance", value: rupees(r.special_allowance) },
+        { label: "Gross pay", value: rupees(r.gross_pay) },
+        { label: "PF", value: r.pf_deduction ? `− ${rupees(r.pf_deduction)}` : null },
+        { label: "ESI", value: r.esi_deduction ? `− ${rupees(r.esi_deduction)}` : null },
+        { label: "Professional tax", value: r.professional_tax ? `− ${rupees(r.professional_tax)}` : null },
+        { label: "Net pay", value: rupees(r.net_pay) },
+        { label: "Department", value: r.department_name },
+        { label: "Generated", value: shortDate(r.generated_at) },
+      ],
     }),
   },
   {
@@ -356,7 +388,7 @@ export const SECTIONS: SectionDef[] = [
     empty: "No projects.",
     table: "project_directory",
     query: {
-      columns: "id, name, description, priority, status, deadline, progress, member_count",
+      columns: "id, name, description, priority, status, deadline, progress, tech_stack, created_at, member_count",
       order: [{ column: "deadline", ascending: true }],
       limit: 100,
     },
@@ -366,6 +398,22 @@ export const SECTIONS: SectionDef[] = [
       meta: `${r.progress ?? 0}%`,
       badge: `${r.status} · ${r.member_count} member${Number(r.member_count) === 1 ? "" : "s"}`,
       tone: statusTone[r.status] ?? "neutral",
+    }),
+    detail: (r) => ({
+      title: r.name,
+      badge: r.status,
+      body: r.description,
+      fields: [
+        { label: "Progress", value: `${r.progress ?? 0}%` },
+        { label: "Priority", value: r.priority },
+        { label: "Deadline", value: shortDate(r.deadline) },
+        { label: "Members", value: String(r.member_count ?? 0) },
+        {
+          label: "Tech stack",
+          value: Array.isArray(r.tech_stack) ? r.tech_stack.join(", ") : r.tech_stack,
+        },
+        { label: "Started", value: shortDate(r.created_at) },
+      ],
     }),
   },
   {
@@ -457,6 +505,14 @@ export const SECTIONS: SectionDef[] = [
       subtitle: r.content,
       meta: shortDate(r.updated_at),
       badge: `v${r.version}`,
+    }),
+    detail: (r) => ({
+      title: r.title,
+      badge: `v${r.version}`,
+      subtitle: [r.updated_by_name ? `Updated by ${r.updated_by_name}` : null, shortDate(r.updated_at)]
+        .filter(Boolean)
+        .join(" · "),
+      body: r.content,
     }),
   },
   {
