@@ -37,3 +37,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Logs from dev-up.ps1 -Hidden; one file per server, overwritten each start.
+.dev-logs/
