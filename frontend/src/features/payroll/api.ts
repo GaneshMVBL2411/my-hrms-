@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { fetchApiBlob, supabase } from "@/lib/supabase"
 import { unwrap, ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { pageRange } from "@/lib/query"
@@ -135,4 +135,34 @@ export async function generateBulk(month: number, year: number): Promise<Payslip
 
 export async function getSummary(month: number, year: number): Promise<PayrollSummary> {
   return unwrap<PayrollSummary>(await supabase.rpc("payroll_summary", { p_month: month, p_year: year }))
+}
+
+export const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+]
+
+/** `Payslip_EMP001_September2026.pdf` — the name the server, the phone and the email all use. */
+export function payslipFilename(p: Pick<Payslip, "employeeCode" | "month" | "year">): string {
+  return `Payslip_${(p.employeeCode || "employee").replace(/[^A-Za-z0-9]+/g, "_")}_${MONTHS[p.month - 1]}${p.year}.pdf`
+}
+
+/**
+ * Saves the payslip PDF the server draws.
+ *
+ * The server's, not a screenshot of the dialog: it is the same file the
+ * employee was emailed and the same one the phone saves, so the three cannot
+ * disagree. RLS decides who may have it — an employee their own, HR anyone's.
+ */
+export async function downloadPayslipPdf(p: Pick<Payslip, "id" | "employeeCode" | "month" | "year">): Promise<void> {
+  const blob = await fetchApiBlob(`/payslips/${p.id}/pdf`)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = payslipFilename(p)
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked on the next tick: revoking synchronously races the click in Safari.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

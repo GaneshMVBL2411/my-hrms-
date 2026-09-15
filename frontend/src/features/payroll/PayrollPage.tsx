@@ -1,13 +1,14 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Eye, Play, Pencil } from "lucide-react"
+import { Download, Eye, Play, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { generateBulk, getSummary, listPayslips } from "@/features/payroll/api"
+import { downloadPayslipPdf, generateBulk, getSummary, listPayslips } from "@/features/payroll/api"
 import { listEmployees } from "@/features/employees/api"
 import { PayslipView } from "@/features/payroll/PayslipView"
 import { SalaryStructureFormDialog } from "@/features/payroll/SalaryStructureFormDialog"
@@ -30,6 +31,19 @@ export function PayrollPage() {
   const [runMonth, setRunMonth] = useState(now.getMonth() + 1)
   const [runYear, setRunYear] = useState(now.getFullYear())
   const [viewPayslipId, setViewPayslipId] = useState<number | null>(null)
+
+  // The "View payslip" button in the payslip email lands on /payroll?payslip=ID.
+  // Opened once on arrival and the parameter dropped, so closing the dialog
+  // does not leave a URL that reopens it on refresh.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const id = Number(searchParams.get("payslip"))
+    if (!Number.isInteger(id) || id <= 0) return
+    setViewPayslipId(id)
+    const next = new URLSearchParams(searchParams)
+    next.delete("payslip")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   const [structureEmployee, setStructureEmployee] = useState<{ id: number; name: string } | null>(null)
 
   // Filtered by employee explicitly, not left to row level security.
@@ -201,7 +215,7 @@ export function PayrollPage() {
                 <TableHead>Gross Pay</TableHead>
                 <TableHead>Deductions</TableHead>
                 <TableHead>Net Pay</TableHead>
-                <TableHead className="w-12" />
+                <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -228,9 +242,19 @@ export function PayrollPage() {
                   <TableCell>{money(p.grossPay - p.netPay)}</TableCell>
                   <TableCell className="font-medium text-foreground">{money(p.netPay)}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon-sm" onClick={() => setViewPayslipId(p.id)}>
-                      <Eye className="size-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon-sm" title="View" onClick={() => setViewPayslipId(p.id)}>
+                        <Eye className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Download PDF"
+                        onClick={() => downloadPayslipPdf(p).catch(() => toast.error("Could not download the payslip"))}
+                      >
+                        <Download className="size-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

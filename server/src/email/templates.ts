@@ -310,18 +310,25 @@ ${s(d, "actionUrl") ? button("View attendance", s(d, "actionUrl")) : ""}`
   // 9 ----------------------------------------------------------------------
   payslip_generated: (d, b) => {
     const heading = `Your ${s(d, "period")} payslip is ready`
+    const attached = !!s(d, "attached")
     const body = `<p style="margin:0 0 6px">Hello ${esc(s(d, "employeeName"))},</p>
-<p style="margin:0 0 6px">Your payslip for ${esc(s(d, "period"))} has been generated and is available in the HR portal.</p>
+<p style="margin:0 0 6px">Your payslip for ${esc(s(d, "period"))} has been generated${
+      attached ? " and is attached to this email as a PDF" : ""
+    }. You can also open and download it any time from the Payroll section of the HR portal or the mobile app.</p>
 ${button("View payslip", s(d, "actionUrl"))}
-<p style="margin:0;font-size:13px;color:#64748b">The payslip is not attached to this email. You will need to sign in to view it, which keeps your salary details out of your mailbox and out of anyone else's.</p>`
+<p style="margin:0;font-size:13px;color:#64748b">${
+      attached
+        ? "This payslip is confidential. If you forward it, forward it only to someone who should see your salary."
+        : "The payslip is not attached to this email. Sign in to view and download it."
+    }</p>`
     return {
       subject: `Your ${s(d, "period")} payslip — ${b.companyName}`,
       html: layout(b, heading, body),
       text: plain(heading, [
         `Hello ${s(d, "employeeName")},`,
-        `Your payslip for ${s(d, "period")} is ready.`,
-        `View it here: ${s(d, "actionUrl")}`,
-        "It is not attached: you will need to sign in to view it.",
+        `Your payslip for ${s(d, "period")} is ready${attached ? " and is attached as a PDF" : ""}.`,
+        `You can also view and download it here: ${s(d, "actionUrl")}`,
+        attached ? "This payslip is confidential." : "It is not attached: sign in to view and download it.",
       ], b.companyName),
     }
   },

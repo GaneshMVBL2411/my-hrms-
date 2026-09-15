@@ -209,6 +209,32 @@ export async function fileSource(
   }
 }
 
+/**
+ * The payslip as a PDF, base64 so it can be written straight to a file.
+ *
+ * Drawn on the server, the same file the web downloads and the email carries,
+ * so a payslip looks the same wherever it came from. The token goes in the
+ * header as everywhere else; `/payslips/:id/pdf` reads under the session, so
+ * an employee gets their own and a 404 for anyone else's.
+ */
+export async function payslipPdf(id: number): Promise<ArrayBuffer> {
+  const token = await getToken()
+  const res = await fetch(`${API_URL}/payslips/${id}/pdf`, {
+    headers: {
+      "ngrok-skip-browser-warning": "1",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  if (!res.ok) {
+    if (res.status === 401) {
+      await setToken(null)
+      unauthorizedHandler?.()
+    }
+    throw new ApiError(res.status === 404 ? "This payslip is not available." : res.statusText, res.status)
+  }
+  return res.arrayBuffer()
+}
+
 /** Today's row for the signed-in employee, or null before the first punch. */
 /**
  * The signed-in person's own attendance for today.

@@ -22,7 +22,8 @@ import {
   DeviceAuthError,
 } from "./deviceauth.js"
 import { emailRouter } from "./email/routes.js"
-import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted } from "./email/events.js"
+import { onEmployeeCreated, onLeaveDecided, onLeaveSubmitted, onPayslipGenerated } from "./email/events.js"
+import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
   loginBlocked,
   recordFailure,
@@ -460,6 +461,30 @@ app.get("/files/:id", requireAuth, async (req, res) => {
   res.send(file.data)
 })
 
+/**
+ * The payslip as a PDF, for the download buttons and nothing else.
+ *
+ * Read under the caller's session so the view's row security decides who
+ * may have it: an employee gets their own, HR gets the company's, and a wrong
+ * or someone else's id is a 404 either way. Served as an attachment with the
+ * file name the web and the phone both use, so a saved copy is recognisable.
+ */
+app.get("/payslips/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid payslip id" })
+
+  const found = await withSession(req.user!, (client) => loadPayslip(client, id))
+  if (!found) return res.status(404).json({ error: "Not found" })
+
+  const pdf = await renderPayslipPdf(found.payslip, found.company)
+  res.setHeader("Content-Type", "application/pdf")
+  res.setHeader("Content-Disposition", `attachment; filename="${payslipFilename(found.payslip)}"`)
+  res.setHeader("Content-Security-Policy", "default-src 'none'")
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  res.setHeader("Cache-Control", "private, no-store")
+  res.send(pdf)
+})
+
 app.get("/rest/:table", requireAuth, apiLimiter, async (req, res) => {
   // Express 5 types a route param as string | string[], because a wildcard can
   // capture several segments. Anything but a plain string is not a table name.
@@ -538,6 +563,49 @@ const CALLABLE = new Set([
 ])
 
 /**
+ * Mails each payslip a payroll run just produced to the employee it belongs to.
+ *
+ * `generate_payslip` returns one id and the bulk run an array of them; both
+ * are read back through `payslip_detail` in one query, under HR's session,
+ * which is allowed to see every row it just created. The PDF is drawn later,
+ * inside the mail job, so a hundred-employee run answers as fast as before
+ * and the rendering never holds the request open.
+ */
+async function notifyPayslips(result: unknown, req: express.Request): Promise<void> {
+  const ids = (Array.isArray(result) ? result : [result]).map(Number).filter((n) => Number.isInteger(n) && n > 0)
+  if (ids.length === 0 || req.user!.companyId === null) return
+
+  try {
+    const { rows, company } = await withSession(req.user!, async (client) => {
+      const { rows } = await client.query<PayslipRow>(
+        `select id, employee_id, employee_name, employee_code, designation_title, department_name,
+                joining_date, month, year, basic, hra, special_allowance, gross_pay,
+                pf_deduction, esi_deduction, professional_tax, net_pay, generated_at
+           from public.payslip_detail where id = any($1::int[])`,
+        [ids]
+      )
+      return { rows, company: await loadCompanyHeader(client) }
+    })
+
+    for (const row of rows) {
+      onPayslipGenerated({
+        payslipId: row.id,
+        employeeId: row.employee_id,
+        companyId: req.user!.companyId,
+        period: payslipPeriod(row),
+        attachment: async () => ({
+          filename: payslipFilename(row),
+          content: await renderPayslipPdf(row, company),
+          contentType: "application/pdf",
+        }),
+      })
+    }
+  } catch (error) {
+    console.error("[email] payslip notification skipped:", (error as Error).message)
+  }
+}
+
+/**
  * Turns a completed RPC into an email, for the handful worth one.
  *
  * Deliberately reads the row back instead of trusting the arguments: the
@@ -546,6 +614,9 @@ const CALLABLE = new Set([
  * is swallowed — the leave is applied for either way.
  */
 async function notifyForRpc(fn: string, result: unknown, req: express.Request): Promise<void> {
+  if (fn === "generate_payslip" || fn === "generate_payslips_bulk") {
+    return notifyPayslips(result, req)
+  }
   if (fn !== "apply_leave" && fn !== "decide_leave_request") return
 
   const id = Number(result)

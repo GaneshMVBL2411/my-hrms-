@@ -104,6 +104,21 @@ export async function fetchFileBlob(fileId: string): Promise<Blob> {
   return response.blob()
 }
 
+/**
+ * A file the API serves under a path of its own — a payslip PDF, say — rather
+ * than by file id. Same token handling as `fetchFileBlob`, for the same reason.
+ */
+export async function fetchApiBlob(path: string): Promise<Blob> {
+  const token = tokenStore.get()
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!response.ok) {
+    throw new Error(`Could not load ${path}: ${response.status}`)
+  }
+  return response.blob()
+}
+
 export async function apiRequest(path: string, init?: RequestInit): Promise<any> {
   return request(path, init)
 }

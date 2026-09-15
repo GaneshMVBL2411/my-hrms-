@@ -2,7 +2,7 @@ import crypto from "node:crypto"
 import { withoutSession } from "../db.js"
 import { logSecurityEvent } from "../security.js"
 import { appBaseUrl } from "./config.js"
-import { enqueueBulk, sendTemplateEmail } from "./index.js"
+import { enqueueBulk, sendTemplateEmail, type Attachment } from "./index.js"
 import type { TemplateData } from "./templates.js"
 
 /**
@@ -37,18 +37,14 @@ interface Recipient {
 async function employeeRecipient(employeeId: number): Promise<Recipient | null> {
   try {
     return await withoutSession(async (client) => {
+      // A definer function, not a join: this connection has no session, and
+      // under row level security it would otherwise see no employees at all —
+      // which is how every employee-addressed email came to be skipped once.
       const { rows } = await client.query<{
         email: string
         full_name: string
         company_id: number
-      }>(
-        `select u.email, e.full_name, e.company_id
-           from public.employees e
-           join public.users u on u.id = e.user_id
-          where e.id = $1 and u.is_active
-          limit 1`,
-        [employeeId]
-      )
+      }>("select email, full_name, company_id from public.email_recipient($1)", [employeeId])
       const row = rows[0]
       return row ? { email: row.email, fullName: row.full_name, companyId: row.company_id } : null
     })
@@ -63,13 +59,7 @@ async function approvers(companyId: number): Promise<Recipient[]> {
   try {
     return await withoutSession(async (client) => {
       const { rows } = await client.query<{ email: string; full_name: string }>(
-        `select u.email, coalesce(e.full_name, u.email) as full_name
-           from public.users u
-           join public.roles r on r.id = u.role_id
-           left join public.employees e on e.user_id = u.id
-          where u.company_id = $1
-            and u.is_active
-            and r.name in ('founder', 'company_admin', 'hr_admin')`,
+        "select email, full_name from public.email_approvers($1)",
         [companyId]
       )
       return rows.map((r) => ({ email: r.email, fullName: r.full_name, companyId }))
@@ -229,23 +219,38 @@ export function onLeaveDecided(params: {
 
 // ---------------------------------------------------------------- payroll
 /**
- * A payslip is ready.
+ * A payslip is ready, and it is in the mail.
  *
- * The payslip itself is not attached. A PDF of someone's salary sitting in a
- * mailbox is readable by anyone who later gains access to that mailbox, and by
- * every mail server between here and there; a link that requires signing in is
- * not. The template says so explicitly, because an employee expecting an
- * attachment will otherwise assume the mail is broken.
+ * The PDF goes with the message because that is how people expect to receive
+ * a payslip — the thing they forward to a bank or a landlord is the
+ * attachment, not a link that asks them to sign in from someone else's
+ * screen. The same file is available from the portal and the phone, and the
+ * mail says so, for anyone who would rather not keep it in a mailbox.
+ *
+ * The attachment is a function rather than a buffer so the PDF is drawn
+ * inside the job, off the request. If drawing it fails the mail still goes
+ * out, as a link, and the failure is logged — a payslip with no notice at
+ * all is the worse outcome.
  */
 export function onPayslipGenerated(params: {
   payslipId: number
   employeeId: number
   companyId: number
   period: string
+  attachment?: () => Promise<Attachment>
 }): void {
   fireAndForget("payslip_generated", async () => {
     const employee = await employeeRecipient(params.employeeId)
     if (!employee) return
+
+    let attachments: Attachment[] | undefined
+    if (params.attachment) {
+      try {
+        attachments = [await params.attachment()]
+      } catch (error) {
+        console.error("[email:event] payslip PDF not attached:", (error as Error).message)
+      }
+    }
 
     await sendTemplateEmail({
       to: employee.email,
@@ -254,8 +259,10 @@ export function onPayslipGenerated(params: {
       data: {
         employeeName: employee.fullName,
         period: params.period,
+        attached: attachments ? "yes" : "",
         path: `/payroll?payslip=${params.payslipId}`,
       },
+      attachments,
     })
 
     await logSecurityEvent(
@@ -406,9 +413,7 @@ export function onAnnouncementPublished(params: {
   fireAndForget("announcement", async () => {
     const audience = await withoutSession(async (client) => {
       const { rows } = await client.query<{ email: string }>(
-        `select u.email
-           from public.users u
-          where u.company_id = $1 and u.is_active`,
+        "select email from public.email_audience($1)",
         [params.companyId]
       )
       return rows.map((r) => r.email)

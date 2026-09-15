@@ -1,8 +1,10 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useState } from "react"
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
+import { savePdf, toBase64 } from "./download"
 
 /**
  * What a row opens into: everything the list had room to hint at.
@@ -20,6 +22,12 @@ export interface DetailView {
   badge?: string
   body?: string | null
   fields?: { label: string; value: string | null | undefined }[]
+  /**
+   * A file this thing can be taken away as. The sheet shows a Download
+   * button and saves whatever `fetch` returns under `name`; the caller only
+   * says where the bytes come from.
+   */
+  download?: { name: string; fetch: () => Promise<ArrayBuffer> }
 }
 
 /**
@@ -34,14 +42,48 @@ export function DetailSheet({ view, onClose }: { view: DetailView | null; onClos
   const { colors } = useTheme()
   const styles = useStyles(makeStyles)
   const insets = useSafeAreaInsets()
+  const [saving, setSaving] = useState(false)
   if (!view) return null
 
   const fields = (view.fields ?? []).filter((f) => f.value !== null && f.value !== undefined && f.value !== "")
+
+  async function download() {
+    if (!view?.download || saving) return
+    setSaving(true)
+    try {
+      const bytes = await view.download.fetch()
+      await savePdf(toBase64(bytes), view.download.name)
+    } catch (e) {
+      Alert.alert("Not saved", (e as Error).message || "The file could not be saved.")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} visible presentationStyle="pageSheet">
       <View style={styles.root}>
         <View style={[styles.bar, { paddingTop: insets.top + scale(8) }]}>
+          {view.download ? (
+            <Pressable
+              onPress={download}
+              disabled={saving}
+              style={[styles.downloadBtn, saving && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Download PDF"
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.onFill} />
+              ) : (
+                <Ionicons name="download-outline" size={scale(16)} color={colors.onFill} />
+              )}
+              <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.downloadText}>
+                {saving ? "Saving…" : "Download PDF"}
+              </Text>
+            </Pressable>
+          ) : (
+            <View />
+          )}
           <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
             <Ionicons name="close" size={scale(24)} color={colors.text} />
           </Pressable>
@@ -98,10 +140,21 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   bar: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: scale(18),
     paddingBottom: scale(6),
   },
+  downloadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(6),
+    backgroundColor: colors.brand,
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(7),
+    borderRadius: scale(999),
+  },
+  downloadText: { color: colors.onFill, fontWeight: "700", fontSize: scale(13) },
   content: { paddingHorizontal: scale(20), gap: scale(14) },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: scale(10), flexWrap: "wrap" },
   title: { flex: 1, fontSize: scale(22), fontWeight: "700", color: colors.text, lineHeight: scale(28) },

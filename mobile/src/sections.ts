@@ -1,4 +1,4 @@
-import { decideLeave, updateTask, type SelectOptions } from "./api"
+import { decideLeave, payslipPdf, updateTask, type SelectOptions } from "./api"
 import type { DetailView } from "./DetailSheet"
 import { LETTER_TITLES } from "./letters"
 import type { MotionName } from "./motion"
@@ -377,6 +377,13 @@ export const SECTIONS: SectionDef[] = [
         { label: "Department", value: r.department_name },
         { label: "Generated", value: shortDate(r.generated_at) },
       ],
+      // The same file HR's run emailed, named the way the web names it.
+      download: {
+        name: `Payslip_${String(r.employee_code || "employee").replace(/[^A-Za-z0-9]+/g, "_")}_${
+          MONTHS[(Number(r.month) || 1) - 1]
+        }${r.year}.pdf`,
+        fetch: () => payslipPdf(Number(r.id)),
+      },
     }),
   },
   {

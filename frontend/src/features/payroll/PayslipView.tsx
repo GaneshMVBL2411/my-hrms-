@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PrintDocument } from "@/components/shared/PrintDocument"
 import { rupeesInWords } from "@/lib/numberToWords"
-import { downloadElementAsPdf } from "@/lib/pdf"
-import { getPayslip } from "@/features/payroll/api"
+import { downloadPayslipPdf, getPayslip } from "@/features/payroll/api"
 import { useAuth } from "@/features/auth/AuthContext"
 
 const MONTHS = [
@@ -56,14 +55,15 @@ export function PayslipView({
     ? payslip.pfDeduction + payslip.esiDeduction + payslip.professionalTax
     : 0
 
+  // The server's PDF rather than a render of this dialog, so the download,
+  // the phone's download and the emailed copy are one file, not three.
   const handleDownload = async () => {
-    if (!printRef.current || !payslip) return
+    if (!payslip) return
     setDownloading(true)
     try {
-      const filename = `Payslip_${payslip.employeeCode}_${MONTHS[payslip.month - 1]}${payslip.year}.pdf`
-      await downloadElementAsPdf(printRef.current, filename)
+      await downloadPayslipPdf(payslip)
     } catch {
-      toast.error("Could not generate PDF")
+      toast.error("Could not download the payslip")
     } finally {
       setDownloading(false)
     }
