@@ -76,12 +76,19 @@ interface HolidayRow {
 export interface ReportScope {
   month: number
   year: number
-  /** One employee, or the whole company when null. */
-  employeeId: number | null
+  /**
+   * Who the report covers. Both null means the whole company; either one set
+   * narrows it, and `employeeIds` wins where both are given — a named list is
+   * more specific than the department it happens to come from.
+   */
+  employeeIds: number[] | null
+  departmentId: number | null
 }
 
 interface ReportData {
   company: CompanyHeader
+  /** The department the report was scoped to, when it was scoped to one. */
+  departmentName: string | null
   /** The office's own zone, as the database has it. */
   zone: string
   employees: EmployeeRow[]
@@ -99,28 +106,45 @@ interface ReportData {
  */
 async function loadReport(client: PoolClient, scope: ReportScope): Promise<ReportData> {
   const first = `${scope.year}-${String(scope.month).padStart(2, "0")}-01`
-  const one = scope.employeeId
+
   // Row level security narrows all of this to the caller's company, and to
   // the caller themselves when they are not HR, so the only filtering here is
   // the filtering the report asked for.
+  //
+  // The employees are resolved first and everything else is fetched for that
+  // list of ids. One shape for one employee, forty, or a department, instead
+  // of a different query per case — which is how the single-employee version
+  // ended up repeating its filter three times.
+  const where: string[] = []
+  const params: unknown[] = []
+  if (scope.employeeIds?.length) {
+    params.push(scope.employeeIds)
+    where.push(`e.id = any($${params.length}::int[])`)
+  } else if (scope.departmentId !== null) {
+    params.push(scope.departmentId)
+    where.push(`e.department_id = $${params.length}`)
+  }
+
   const employees = await client.query<EmployeeRow>(
     `select e.id, e.employee_code, e.full_name, d.name as department_name,
             g.title as designation_title, e.joining_date::text, e.status::text
        from public.employees e
        left join public.departments d on d.id = e.department_id
        left join public.designations g on g.id = e.designation_id
-      ${one === null ? "" : "where e.id = $1"}
+      ${where.length ? `where ${where.join(" and ")}` : ""}
       order by e.employee_code, e.full_name`,
-    one === null ? [] : [one]
+    params
   )
+
+  const ids = employees.rows.map((e) => e.id)
 
   const attendance = await client.query<AttendanceRow>(
     `select a.employee_id, a.date::text, a.check_in, a.check_out, a.break_minutes, a.status::text
        from public.attendance_records a
       where a.date >= $1::date and a.date < ($1::date + interval '1 month')
-        ${one === null ? "" : "and a.employee_id = $2"}
+        and a.employee_id = any($2::int[])
       order by a.date, a.employee_id`,
-    one === null ? [first] : [first, one]
+    [first, ids]
   )
 
   const leaves = await client.query<LeaveRow>(
@@ -130,8 +154,8 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
       where r.status = 'approved'
         and r.start_date < ($1::date + interval '1 month')
         and r.end_date >= $1::date
-        ${one === null ? "" : "and r.employee_id = $2"}`,
-    one === null ? [first] : [first, one]
+        and r.employee_id = any($2::int[])`,
+    [first, ids]
   )
 
   const holidays = await client.query<HolidayRow>(
@@ -148,8 +172,17 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
     .then((r) => r.rows[0]?.zone || OFFICE.timeZone)
     .catch(() => OFFICE.timeZone)
 
+  const departmentName =
+    scope.departmentId === null || scope.employeeIds?.length
+      ? null
+      : await client
+          .query<{ name: string }>("select name from public.departments where id = $1", [scope.departmentId])
+          .then((r) => r.rows[0]?.name ?? null)
+          .catch(() => null)
+
   return {
     company: await loadCompanyHeader(client),
+    departmentName,
     zone,
     employees: employees.rows,
     attendance: attendance.rows,
@@ -333,10 +366,9 @@ function headerRow(sheet: ExcelJS.Worksheet, labels: string[]): void {
   row.height = 20
 }
 
-export function reportFilename(scope: ReportScope, who: string | null): string {
+export function reportFilename(scope: ReportScope, who: string): string {
   const period = `${MONTHS[scope.month - 1] ?? scope.month}_${scope.year}`
-  const subject = who ? who.replace(/[^A-Za-z0-9]+/g, "_") : "All_Employees"
-  return `Attendance_${subject}_${period}.xlsx`
+  return `Attendance_${who.replace(/[^A-Za-z0-9]+/g, "_")}_${period}.xlsx`
 }
 
 /**
@@ -356,7 +388,25 @@ export async function buildAttendanceWorkbook(
   const holidayDates = new Set(data.holidays.map((h) => h.event_date.slice(0, 10)))
   const workingDays = month.filter((d) => !isWeekend(d) && !holidayDates.has(d))
   const period = `${MONTHS[scope.month - 1] ?? scope.month} ${scope.year}`
-  const single = scope.employeeId !== null ? data.employees[0] ?? null : null
+
+  // What to call this report, on the sheet and in the file name. A list of
+  // one is still a list as far as the query is concerned, but to whoever
+  // opens it it is that person's month, so it is named after them.
+  const single = data.employees.length === 1 ? data.employees[0]! : null
+  const scopeLabel = single
+    ? `${single.full_name} (${single.employee_code})`
+    : data.departmentName
+      ? `${data.departmentName} — ${data.employees.length} employees`
+      : scope.employeeIds?.length
+        ? `${data.employees.length} selected employees`
+        : "All employees"
+  const scopeName = single
+    ? single.full_name
+    : data.departmentName
+      ? data.departmentName
+      : scope.employeeIds?.length
+        ? `${data.employees.length}_Employees`
+        : "All_Employees"
 
   const totals = data.employees.map((e) => totalsFor(e, data, month, workingDays))
   const sum = (pick: (t: EmployeeTotals) => number) => totals.reduce((a, t) => a + pick(t), 0)
@@ -382,7 +432,7 @@ export async function buildAttendanceWorkbook(
   titleRow(summary, `Attendance Report — ${period}`, 13, 13)
   summary.addRow([])
 
-  labelRow(summary, "Scope", single ? `${single.full_name} (${single.employee_code})` : "All employees", 6)
+  labelRow(summary, "Scope", scopeLabel, 6)
   labelRow(summary, "Office hours", `${OFFICE.label}  ·  ${OFFICE.hoursPerDay.toFixed(2)} hours per day`, 6)
   labelRow(summary, "Working week", "Monday to Friday (Saturday and Sunday off)", 6)
   labelRow(summary, "Generated", new Intl.DateTimeFormat("en-IN", { timeZone: data.zone, dateStyle: "medium", timeStyle: "short" }).format(new Date()), 6)
@@ -523,6 +573,6 @@ export async function buildAttendanceWorkbook(
   const arrayBuffer = await book.xlsx.writeBuffer()
   return {
     buffer: Buffer.from(arrayBuffer as ArrayBuffer),
-    filename: reportFilename(scope, single?.full_name ?? null),
+    filename: reportFilename(scope, scopeName),
   }
 }

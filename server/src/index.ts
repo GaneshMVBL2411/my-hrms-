@@ -555,7 +555,13 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
   const now = new Date()
   const month = Number(req.query.month ?? now.getMonth() + 1)
   const year = Number(req.query.year ?? now.getFullYear())
-  const employeeId = req.query.employeeId === undefined ? null : Number(req.query.employeeId)
+  // employeeId stays accepted alongside employeeIds: a saved link from the
+  // single-employee version of this report should keep working.
+  const idList = [req.query.employeeIds, req.query.employeeId]
+    .filter((v) => typeof v === "string" && v.length > 0)
+    .flatMap((v) => String(v).split(","))
+    .map((v) => Number(v.trim()))
+  const departmentId = req.query.departmentId === undefined ? null : Number(req.query.departmentId)
 
   if (!Number.isInteger(month) || month < 1 || month > 12) {
     return res.status(400).json({ error: "Invalid month" })
@@ -563,23 +569,40 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     return res.status(400).json({ error: "Invalid year" })
   }
-  if (employeeId !== null && (!Number.isInteger(employeeId) || employeeId <= 0)) {
+  if (idList.some((n) => !Number.isInteger(n) || n <= 0)) {
     return res.status(400).json({ error: "Invalid employee id" })
   }
+  // A cap, because this is a query parameter and the list goes into the sheet
+  // and into an `= any(...)`. Well past any real company's headcount.
+  if (idList.length > 500) {
+    return res.status(400).json({ error: "Too many employees selected" })
+  }
+  if (departmentId !== null && (!Number.isInteger(departmentId) || departmentId <= 0)) {
+    return res.status(400).json({ error: "Invalid department id" })
+  }
+
+  const employeeIds = idList.length > 0 ? Array.from(new Set(idList)) : null
 
   const report = await withSession(req.user!, async (client) => {
     const { rows } = await client.query<{ is_hr: boolean }>("select public.app_is_hr() as is_hr")
     const isHr = rows[0]?.is_hr === true
-    if (!isHr && employeeId !== req.user!.employeeId) {
+    // Everyone may pull their own month. Anything wider — several people, a
+    // department, the whole company — is HR's.
+    const ownOnly =
+      employeeIds !== null &&
+      employeeIds.length === 1 &&
+      employeeIds[0] === req.user!.employeeId &&
+      departmentId === null
+    if (!isHr && !ownOnly) {
       return "forbidden" as const
     }
-    return buildAttendanceWorkbook(client, { month, year, employeeId })
+    return buildAttendanceWorkbook(client, { month, year, employeeIds, departmentId })
   })
 
   if (report === "forbidden") {
-    return res.status(403).json({ error: "Only HR can export attendance for the whole company" })
+    return res.status(403).json({ error: "Only HR can export attendance for anyone but themselves" })
   }
-  if (!report) return res.status(404).json({ error: "No employees to report on" })
+  if (!report) return res.status(404).json({ error: "No employees match that selection" })
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
   res.setHeader("Content-Disposition", `attachment; filename="${report.filename}"`)

@@ -100,18 +100,21 @@ export async function listAttendance(params: {
 export async function downloadAttendanceReport(params: {
   month: number
   year: number
-  employeeId?: number | null
+  /** Empty or omitted means everyone the caller is allowed to see. */
+  employeeIds?: number[]
+  departmentId?: number | null
   /** Whose report it is, for the saved file's name. */
   filename?: string
 }): Promise<void> {
   const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
-  if (params.employeeId) query.set("employeeId", String(params.employeeId))
+  if (params.employeeIds?.length) query.set("employeeIds", params.employeeIds.join(","))
+  else if (params.departmentId) query.set("departmentId", String(params.departmentId))
 
   const blob = await fetchApiBlob(`/attendance/report.xlsx?${query.toString()}`)
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  const who = (params.filename ?? (params.employeeId ? "Employee" : "All_Employees")).replace(/[^A-Za-z0-9]+/g, "_")
+  const who = (params.filename ?? "Attendance").replace(/[^A-Za-z0-9]+/g, "_")
   a.download = `Attendance_${who}_${params.year}-${String(params.month).padStart(2, "0")}.xlsx`
   document.body.appendChild(a)
   a.click()

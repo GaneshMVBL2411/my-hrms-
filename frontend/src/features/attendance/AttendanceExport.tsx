@@ -6,30 +6,32 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { downloadAttendanceReport } from "@/features/attendance/api"
-import { listEmployees } from "@/features/employees/api"
+import { EmployeePicker } from "@/features/attendance/EmployeePicker"
+import { listDepartments, listEmployees } from "@/features/employees/api"
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ]
 
-/** "All employees" as a select value — a sentinel, because a Select needs a string. */
-const EVERYONE = "all"
+/** "Every department" as a select value — a sentinel, because a Select needs a string. */
+const ALL_DEPARTMENTS = "all"
 
 /**
- * The attendance export, for whichever month someone needs it for.
+ * The attendance export, for whichever month and whichever people.
  *
- * HR gets the employee picker as well, and with it the three reports people
- * actually ask for: one person's month, everyone's month side by side, and
- * every day of it. They are one workbook with three sheets rather than three
- * downloads, because the totals only make sense next to the days that produce
- * them.
+ * HR gets a department filter and a multiple-choice employee picker, because
+ * "one or all" is not how the question arrives: it is usually a handful of
+ * people, or one team. Whatever is picked, the workbook is the same three
+ * sheets — summary, day by day, holidays — since the totals only mean
+ * anything next to the days that produce them.
  */
 export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"; employeeId?: number | null }) {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [who, setWho] = useState<string>(EVERYONE)
+  const [department, setDepartment] = useState<string>(ALL_DEPARTMENTS)
+  const [picked, setPicked] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
 
   const { data: employees } = useQuery({
@@ -38,15 +40,46 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
     enabled: scope === "team",
   })
 
+  const { data: departments } = useQuery({
+    queryKey: ["departments"],
+    queryFn: listDepartments,
+    enabled: scope === "team",
+  })
+
+  // The picker lists the department's people once one is chosen, so the two
+  // controls read as one narrowing rather than as two competing filters.
+  const inDepartment =
+    department === ALL_DEPARTMENTS
+      ? employees?.items ?? []
+      : (employees?.items ?? []).filter((e) => e.departmentId === Number(department))
+
+  const departmentName = departments?.find((d) => d.id === Number(department))?.name
+
   const download = async () => {
     setBusy(true)
     try {
-      const target = scope === "mine" ? employeeId ?? null : who === EVERYONE ? null : Number(who)
-      const name =
-        scope === "team" && who !== EVERYONE
-          ? employees?.items.find((e) => e.id === Number(who))?.fullName
-          : undefined
-      await downloadAttendanceReport({ month, year, employeeId: target, filename: name })
+      if (scope === "mine") {
+        await downloadAttendanceReport({
+          month,
+          year,
+          employeeIds: employeeId ? [employeeId] : [],
+          filename: "Mine",
+        })
+      } else {
+        const name =
+          picked.length === 1
+            ? inDepartment.find((e) => e.id === picked[0])?.fullName
+            : picked.length > 1
+              ? `${picked.length}_Employees`
+              : departmentName ?? "All_Employees"
+        await downloadAttendanceReport({
+          month,
+          year,
+          employeeIds: picked,
+          departmentId: department === ALL_DEPARTMENTS ? null : Number(department),
+          filename: name,
+        })
+      }
       toast.success(`${MONTHS[month - 1]} ${year} attendance downloaded`)
     } catch (error) {
       toast.error((error as Error).message || "Could not build the report")
@@ -91,22 +124,37 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
         </div>
 
         {scope === "team" && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-muted-foreground">Employees</span>
-            <Select value={who} onValueChange={setWho}>
-              <SelectTrigger className="w-64 rounded-md">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={EVERYONE}>All employees</SelectItem>
-                {employees?.items.map((e) => (
-                  <SelectItem key={e.id} value={String(e.id)}>
-                    {e.fullName} · {e.employeeCode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Department</span>
+              <Select
+                value={department}
+                onValueChange={(v) => {
+                  setDepartment(v)
+                  // Names ticked in another department would silently widen
+                  // the report past the one now showing.
+                  setPicked([])
+                }}
+              >
+                <SelectTrigger className="w-48 rounded-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_DEPARTMENTS}>All departments</SelectItem>
+                  {departments?.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Employees</span>
+              <EmployeePicker employees={inDepartment} selected={picked} onChange={setPicked} disabled={busy} />
+            </div>
+          </>
         )}
 
         <Button className="rounded-md" disabled={busy} onClick={download}>
@@ -116,6 +164,7 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
 
         <p className="w-full text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:text-right">
           Summary, day by day, and the month's holidays — office hours 09:30 AM to 06:30 PM.
+          {scope === "team" && " Pick any number of people, or a department, or leave it on all."}
         </p>
       </CardContent>
     </Card>
