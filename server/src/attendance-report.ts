@@ -31,9 +31,10 @@ export const OFFICE = {
   weekend: [0, 6],
   /**
    * Punches are stored in UTC; the office is not. Every time in this report
-   * is rendered in this zone, and lateness is judged against it — the
-   * attendance_detail view compares the raw UTC time to 09:30 instead, which
-   * makes a 12:09 IST arrival look punctual.
+   * is rendered in this zone and lateness is judged against it — but the
+   * database decides what the zone is, through office_time_zone(), which the
+   * view and the punch functions use too. This is only the fallback for a
+   * database that predates migration 0042.
    */
   timeZone: "Asia/Kolkata",
 } as const
@@ -81,6 +82,8 @@ export interface ReportScope {
 
 interface ReportData {
   company: CompanyHeader
+  /** The office's own zone, as the database has it. */
+  zone: string
   employees: EmployeeRow[]
   attendance: AttendanceRow[]
   leaves: LeaveRow[]
@@ -140,8 +143,14 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
     [first]
   )
 
+  const zone = await client
+    .query<{ zone: string }>("select public.office_time_zone() as zone")
+    .then((r) => r.rows[0]?.zone || OFFICE.timeZone)
+    .catch(() => OFFICE.timeZone)
+
   return {
     company: await loadCompanyHeader(client),
+    zone,
     employees: employees.rows,
     attendance: attendance.rows,
     leaves: leaves.rows,
@@ -192,10 +201,10 @@ function leaveDates(leaves: LeaveRow[], employeeId: number, month: string[]): Se
 
 // -------------------------------------------------------------- formatting
 
-function timeInOffice(value: Date | null): string {
+function timeInOffice(value: Date | null, zone: string): string {
   if (!value) return "—"
   return new Intl.DateTimeFormat("en-IN", {
-    timeZone: OFFICE.timeZone,
+    timeZone: zone,
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -203,9 +212,9 @@ function timeInOffice(value: Date | null): string {
 }
 
 /** Minutes past midnight in the office's own zone — for judging lateness. */
-function minutesInOffice(value: Date): number {
+function minutesInOffice(value: Date, zone: string): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: OFFICE.timeZone,
+    timeZone: zone,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -273,7 +282,7 @@ function totalsFor(
     const worked = hoursBetween(row)
     if (worked !== null) hours += worked
     else if (row.check_in) missingCheckOut++
-    if (row.check_in && minutesInOffice(row.check_in) > OFFICE_START_MINUTES) late++
+    if (row.check_in && minutesInOffice(row.check_in, data.zone) > OFFICE_START_MINUTES) late++
   }
 
   const absent = Math.max(countable.length - present - halfDays - leaves, 0)
@@ -376,7 +385,7 @@ export async function buildAttendanceWorkbook(
   labelRow(summary, "Scope", single ? `${single.full_name} (${single.employee_code})` : "All employees", 6)
   labelRow(summary, "Office hours", `${OFFICE.label}  ·  ${OFFICE.hoursPerDay.toFixed(2)} hours per day`, 6)
   labelRow(summary, "Working week", "Monday to Friday (Saturday and Sunday off)", 6)
-  labelRow(summary, "Generated", new Intl.DateTimeFormat("en-IN", { timeZone: OFFICE.timeZone, dateStyle: "medium", timeStyle: "short" }).format(new Date()), 6)
+  labelRow(summary, "Generated", new Intl.DateTimeFormat("en-IN", { timeZone: data.zone, dateStyle: "medium", timeStyle: "short" }).format(new Date()), 6)
   summary.addRow([])
 
   // The four figures the report exists to give, before any detail.
@@ -480,11 +489,11 @@ export async function buildAttendanceWorkbook(
         employee.employee_code,
         employee.full_name,
         status.replace(/_/g, " "),
-        timeInOffice(row?.check_in ?? null),
-        timeInOffice(row?.check_out ?? null),
+        timeInOffice(row?.check_in ?? null, data.zone),
+        timeInOffice(row?.check_out ?? null, data.zone),
         row?.break_minutes ?? 0,
         worked ?? "",
-        row?.check_in && minutesInOffice(row.check_in) > OFFICE_START_MINUTES ? "Yes" : "",
+        row?.check_in && minutesInOffice(row.check_in, data.zone) > OFFICE_START_MINUTES ? "Yes" : "",
       ])
       line.getCell(9).numFmt = "0.00"
       if (status === "absent") line.getCell(5).font = { color: { argb: "FFB42318" }, bold: true }
