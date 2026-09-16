@@ -210,7 +210,7 @@ export async function fileSource(
 }
 
 /**
- * A PDF the server draws — a payslip, a letter — as bytes to write to a file.
+ * A file the server builds — a payslip, a letter, a workbook — as bytes.
  *
  * The same file the web downloads and the email carries, so a document looks
  * the same wherever it came from. The token goes in the header as everywhere
@@ -237,6 +237,21 @@ async function fetchPdf(path: string, missing: string): Promise<ArrayBuffer> {
 
 export const payslipPdf = (id: number) => fetchPdf(`/payslips/${id}/pdf`, "This payslip is not available.")
 export const letterPdf = (id: number) => fetchPdf(`/letters/${id}/pdf`, "This letter is not available.")
+
+/**
+ * The month's attendance as an Excel workbook.
+ *
+ * Fetched and saved by the app rather than by the portal inside the WebView:
+ * a browser download there is a blob URL and an <a download>, and a WebView
+ * honours neither — the button appeared to do nothing at all. Here the bytes
+ * come back over the same authenticated fetch as everything else and go
+ * straight to a file the phone can open.
+ */
+export function attendanceReportXlsx(params: { month: number; year: number; everyone: boolean; employeeId?: number | null }) {
+  const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
+  if (!params.everyone && params.employeeId) query.set("employeeIds", String(params.employeeId))
+  return fetchPdf(`/attendance/report.xlsx?${query.toString()}`, "That report is not available to you.")
+}
 
 /** Today's row for the signed-in employee, or null before the first punch. */
 /**

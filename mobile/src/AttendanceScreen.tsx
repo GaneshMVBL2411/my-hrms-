@@ -28,6 +28,7 @@ import {
   type TodayRecord,
 } from "./api"
 import { biometricReady, createDeviceKey, isEnrolled, signChallenge, forgetDeviceKey } from "./device"
+import { AttendanceExport } from "./AttendanceExport"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette } from "./theme"
 import { Logo } from "./Logo"
@@ -390,6 +391,8 @@ export function AttendanceScreen({
           </View>
         )}
       </View>
+
+      <AttendanceExport user={user} />
 
       {blocked ? (
         <View style={styles.card}>

@@ -7,7 +7,7 @@ import * as LegacyFS from "expo-file-system/legacy"
 import * as SecureStore from "expo-secure-store"
 
 /**
- * Saving a PDF "directly", for letters and payslips alike.
+ * Saving a file "directly" — a letter, a payslip, an attendance workbook.
  *
  * "Directly" costs one prompt on Android and none after it, and that is a
  * platform limit rather than a choice. Under scoped storage an app cannot
@@ -41,10 +41,10 @@ const SAVE_FOLDER_KEY = "hrms.letters.folderUri"
  * removed, the permission revoked in settings — so a failed write clears it
  * and asks again rather than failing forever on a folder that is gone.
  */
-async function saveToChosenFolder(base64: string, name: string): Promise<boolean> {
+async function saveToChosenFolder(base64: string, name: string, mimeType: string): Promise<boolean> {
   const SAF = LegacyFS.StorageAccessFramework
   const write = async (directoryUri: string) => {
-    const target = await SAF.createFileAsync(directoryUri, name, "application/pdf")
+    const target = await SAF.createFileAsync(directoryUri, name, mimeType)
     await LegacyFS.writeAsStringAsync(target, base64, { encoding: "base64" })
   }
 
@@ -68,8 +68,15 @@ async function saveToChosenFolder(base64: string, name: string): Promise<boolean
   return true
 }
 
+/** The two kinds of file this app hands over, and what each is called. */
+export const PDF = { mimeType: "application/pdf", uti: "com.adobe.pdf" }
+export const XLSX = {
+  mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  uti: "org.openxmlformats.spreadsheetml.sheet",
+}
+
 /**
- * Saves a PDF, given its bytes as base64 and the name it should have.
+ * Saves a file, given its bytes as base64 and the name it should have.
  *
  * `fileUri` is an existing copy of the same bytes, if the caller has one (a
  * printed letter does). It is only used for the share sheet, which needs a
@@ -78,8 +85,13 @@ async function saveToChosenFolder(base64: string, name: string): Promise<boolean
  * Tells the person what happened in an alert either way, because a download
  * that silently succeeds is indistinguishable from one that silently failed.
  */
-export async function savePdf(base64: string, name: string, fileUri?: string): Promise<void> {
-  if (!base64) throw new Error("The PDF came back empty.")
+export async function saveFile(
+  base64: string,
+  name: string,
+  kind: { mimeType: string; uti: string } = PDF,
+  fileUri?: string
+): Promise<void> {
+  if (!base64) throw new Error("The file came back empty.")
 
   if (Platform.OS !== "android") {
     // Straight into the folder the Files app shows under this app's name.
@@ -88,20 +100,25 @@ export async function savePdf(base64: string, name: string, fileUri?: string): P
     return
   }
 
-  if (await saveToChosenFolder(base64, name)) {
+  if (await saveToChosenFolder(base64, name, kind.mimeType)) {
     Alert.alert("Downloaded", `${name} has been saved.`)
     return
   }
 
   // Only reached if someone declines the one-time folder prompt. Handing
-  // them the finished PDF is better than losing it over a dismissed dialog.
+  // them the finished file is better than losing it over a dismissed dialog.
   if (!(await Sharing.isAvailableAsync())) return
   let uri = fileUri
   if (!uri) {
     uri = `${LegacyFS.cacheDirectory}${name}`
     await LegacyFS.writeAsStringAsync(uri, base64, { encoding: "base64" })
   }
-  await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: name })
+  await Sharing.shareAsync(uri, { mimeType: kind.mimeType, UTI: kind.uti, dialogTitle: name })
+}
+
+/** The PDF case, which is most of them. */
+export async function savePdf(base64: string, name: string, fileUri?: string): Promise<void> {
+  return saveFile(base64, name, PDF, fileUri)
 }
 
 /** Base64 of a fetched body — for bytes that arrived over the network rather than from a printer. */
