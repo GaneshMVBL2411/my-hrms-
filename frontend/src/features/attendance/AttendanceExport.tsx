@@ -7,15 +7,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { downloadAttendanceReport } from "@/features/attendance/api"
 import { EmployeePicker } from "@/features/attendance/EmployeePicker"
-import { listDepartments, listEmployees } from "@/features/employees/api"
+import { listBranches, listDepartments, listEmployees } from "@/features/employees/api"
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ]
 
-/** "Every department" as a select value — a sentinel, because a Select needs a string. */
-const ALL_DEPARTMENTS = "all"
+/** "Everything" as a select value — a sentinel, because a Select needs a string. */
+const ALL = "all"
 
 /**
  * The attendance export, for whichever month and whichever people.
@@ -30,7 +30,8 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [department, setDepartment] = useState<string>(ALL_DEPARTMENTS)
+  const [department, setDepartment] = useState<string>(ALL)
+  const [branch, setBranch] = useState<string>(ALL)
   const [picked, setPicked] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
 
@@ -46,14 +47,20 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
     enabled: scope === "team",
   })
 
+  const { data: branches } = useQuery({
+    queryKey: ["branches"],
+    queryFn: listBranches,
+    enabled: scope === "team",
+  })
+
   // The picker lists the department's people once one is chosen, so the two
   // controls read as one narrowing rather than as two competing filters.
-  const inDepartment =
-    department === ALL_DEPARTMENTS
-      ? employees?.items ?? []
-      : (employees?.items ?? []).filter((e) => e.departmentId === Number(department))
+  const inDepartment = (employees?.items ?? [])
+    .filter((e) => department === ALL || e.departmentId === Number(department))
+    .filter((e) => branch === ALL || e.branchId === Number(branch))
 
   const departmentName = departments?.find((d) => d.id === Number(department))?.name
+  const branchName = branches?.find((b) => b.id === Number(branch))?.name
 
   const download = async () => {
     setBusy(true)
@@ -71,13 +78,14 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
             ? inDepartment.find((e) => e.id === picked[0])?.fullName
             : picked.length > 1
               ? `${picked.length}_Employees`
-              : departmentName ?? "All_Employees"
+              : departmentName ?? branchName ?? "All_Employees"
         await downloadAttendanceReport({
           month,
           year,
           employeeIds: picked,
-          departmentId: department === ALL_DEPARTMENTS ? null : Number(department),
-          filename: name,
+          departmentId: department === ALL ? null : Number(department),
+          branchId: branch === ALL ? null : Number(branch),
+          filename: [name, branchName && name !== branchName ? branchName : null].filter(Boolean).join("_"),
         })
       }
       toast.success(`${MONTHS[month - 1]} ${year} attendance downloaded`)
@@ -126,6 +134,29 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
         {scope === "team" && (
           <>
             <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground">Office</span>
+              <Select
+                value={branch}
+                onValueChange={(v) => {
+                  setBranch(v)
+                  setPicked([])
+                }}
+              >
+                <SelectTrigger className="w-44 rounded-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All offices</SelectItem>
+                  {branches?.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
               <span className="text-xs text-muted-foreground">Department</span>
               <Select
                 value={department}
@@ -140,7 +171,7 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_DEPARTMENTS}>All departments</SelectItem>
+                  <SelectItem value={ALL}>All departments</SelectItem>
                   {departments?.map((d) => (
                     <SelectItem key={d.id} value={String(d.id)}>
                       {d.name}
@@ -164,7 +195,7 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
 
         <p className="w-full text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:text-right">
           Summary, day by day, and the month's holidays — office hours 09:30 AM to 06:30 PM.
-          {scope === "team" && " Pick any number of people, or a department, or leave it on all."}
+          {scope === "team" && " Pick an office, a department, any number of people — or leave it on all."}
         </p>
       </CardContent>
     </Card>

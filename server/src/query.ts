@@ -108,7 +108,7 @@ export const READABLE = new Set([
 export const WRITE_ONLY = new Set(["employees"])
 
 export const WRITABLE = new Set([
-  "employees", "departments", "designations", "leave_types",
+  "employees", "departments", "designations", "branches", "leave_types",
   "leave_requests", "projects", "project_members", "tasks", "task_checklist_items",
   "task_comments", "assets", "asset_assignments", "candidates", "interviews",
   "salary_structures", "payslips", "policies", "generated_letters", "announcements",

@@ -22,6 +22,7 @@ import {
   createDepartment,
   createDesignation,
   createEmployee,
+  listBranches,
   listDepartments,
   listDesignations,
   listEmployees,
@@ -64,6 +65,7 @@ const baseSchema = {
   dob: z.string().optional(),
   gender: z.enum(["male", "female", "other"]).optional(),
   departmentId: z.string().optional(),
+  branchId: z.string().optional(),
   designationId: z.string().optional(),
   reportingManagerId: z.string().optional(),
   joiningDate: z.string().optional(),
@@ -93,6 +95,7 @@ export function EmployeeFormDialog({
   const queryClient = useQueryClient()
 
   const { data: departments = [] } = useQuery({ queryKey: ["departments"], queryFn: listDepartments })
+  const { data: branches = [] } = useQuery({ queryKey: ["branches"], queryFn: listBranches })
   const { data: designations = [] } = useQuery({ queryKey: ["designations"], queryFn: listDesignations })
   // Anyone in the company can be a manager — the reporting line follows the org
   // chart, not the role, and a team lead who reports to another team lead is
@@ -131,6 +134,7 @@ export function EmployeeFormDialog({
       dob: employee?.dob ?? "",
       gender: employee?.gender ?? undefined,
       departmentId: employee?.departmentId ? String(employee.departmentId) : undefined,
+      branchId: employee?.branchId ? String(employee.branchId) : undefined,
       designationId: employee?.designationId ? String(employee.designationId) : undefined,
       reportingManagerId: employee?.reportingManagerId ? String(employee.reportingManagerId) : NONE,
       joiningDate: employee?.joiningDate ?? "",
@@ -157,6 +161,7 @@ export function EmployeeFormDialog({
         dob: values.dob || undefined,
         gender: values.gender || undefined,
         departmentId: values.departmentId ? Number(values.departmentId) : undefined,
+        branchId: values.branchId ? Number(values.branchId) : undefined,
         designationId: values.designationId ? Number(values.designationId) : undefined,
         reportingManagerId:
           values.reportingManagerId && values.reportingManagerId !== NONE
@@ -333,6 +338,29 @@ export function EmployeeFormDialog({
                   designations={designations}
                   onPendingTitleChange={setPendingDesignationTitle}
                 />
+              )}
+            />
+            <Controller
+              control={control}
+              name="branchId"
+              render={({ field }) => (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="branch">Office</Label>
+                  <Select value={field.value ?? NONE} onValueChange={(v) => field.onChange(v === NONE ? undefined : v)}>
+                    <SelectTrigger id="branch" className="rounded-md">
+                      <SelectValue placeholder="Not posted yet" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Not posted yet</SelectItem>
+                      {branches.map((b) => (
+                        <SelectItem key={b.id} value={String(b.id)}>
+                          {b.name}
+                          {b.city ? ` · ${b.city}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
             />
             <Controller

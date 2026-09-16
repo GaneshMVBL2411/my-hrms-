@@ -335,7 +335,7 @@ const READABLE_TABLES = new Set([
   "project_directory", "project_member_detail", "task_directory", "task_comment_detail",
   "candidate_directory", "interview_detail", "asset_detail", "asset_assignment_detail",
   "salary_structure_detail", "payslip_detail", "policy_detail", "generated_letter_detail",
-  "announcement_detail", "company_event_detail", "audit_log_detail",
+  "announcement_detail", "company_event_detail", "audit_log_detail", "branches",
   "companies", "company_modules", "subscription_plans", "company_subscriptions",
   "platform_services", "company_services", "support_sessions",
   "departments", "designations", "leave_types", "roles",
@@ -562,6 +562,7 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
     .flatMap((v) => String(v).split(","))
     .map((v) => Number(v.trim()))
   const departmentId = req.query.departmentId === undefined ? null : Number(req.query.departmentId)
+  const branchId = req.query.branchId === undefined ? null : Number(req.query.branchId)
 
   if (!Number.isInteger(month) || month < 1 || month > 12) {
     return res.status(400).json({ error: "Invalid month" })
@@ -580,6 +581,9 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
   if (departmentId !== null && (!Number.isInteger(departmentId) || departmentId <= 0)) {
     return res.status(400).json({ error: "Invalid department id" })
   }
+  if (branchId !== null && (!Number.isInteger(branchId) || branchId <= 0)) {
+    return res.status(400).json({ error: "Invalid branch id" })
+  }
 
   const employeeIds = idList.length > 0 ? Array.from(new Set(idList)) : null
 
@@ -592,11 +596,12 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
       employeeIds !== null &&
       employeeIds.length === 1 &&
       employeeIds[0] === req.user!.employeeId &&
-      departmentId === null
+      departmentId === null &&
+      branchId === null
     if (!isHr && !ownOnly) {
       return "forbidden" as const
     }
-    return buildAttendanceWorkbook(client, { month, year, employeeIds, departmentId })
+    return buildAttendanceWorkbook(client, { month, year, employeeIds, departmentId, branchId })
   })
 
   if (report === "forbidden") {

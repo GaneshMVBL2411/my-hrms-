@@ -46,6 +46,7 @@ interface EmployeeRow {
   employee_code: string
   full_name: string
   department_name: string | null
+  branch_name: string | null
   designation_title: string | null
   joining_date: string | null
   status: string
@@ -71,6 +72,8 @@ interface HolidayRow {
   title: string
   event_date: string
   description: string | null
+  /** Null for a holiday the whole company observes. */
+  branch_name: string | null
 }
 
 export interface ReportScope {
@@ -83,12 +86,16 @@ export interface ReportScope {
    */
   employeeIds: number[] | null
   departmentId: number | null
+  /** One office, or every office when null. */
+  branchId: number | null
 }
 
 interface ReportData {
   company: CompanyHeader
   /** The department the report was scoped to, when it was scoped to one. */
   departmentName: string | null
+  /** The branch it was scoped to, likewise. */
+  branchName: string | null
   /** The office's own zone, as the database has it. */
   zone: string
   employees: EmployeeRow[]
@@ -124,12 +131,21 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
     params.push(scope.departmentId)
     where.push(`e.department_id = $${params.length}`)
   }
+  // A branch narrows any of the above rather than replacing it: "Engineering
+  // in Hyderabad" is a question people ask, and two filters that cancelled
+  // each other out would answer it wrongly and silently.
+  if (scope.branchId !== null) {
+    params.push(scope.branchId)
+    where.push(`e.branch_id = $${params.length}`)
+  }
 
   const employees = await client.query<EmployeeRow>(
     `select e.id, e.employee_code, e.full_name, d.name as department_name,
-            g.title as designation_title, e.joining_date::text, e.status::text
+            b.name as branch_name, g.title as designation_title,
+            e.joining_date::text, e.status::text
        from public.employees e
        left join public.departments d on d.id = e.department_id
+       left join public.branches b on b.id = e.branch_id
        left join public.designations g on g.id = e.designation_id
       ${where.length ? `where ${where.join(" and ")}` : ""}
       order by e.employee_code, e.full_name`,
@@ -158,13 +174,18 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
     [first, ids]
   )
 
+  // A holiday with no branch belongs to the whole company; one with a branch
+  // belongs to that office only, which is the case this exists for — a
+  // regional festival that is a working day at the other office.
   const holidays = await client.query<HolidayRow>(
-    `select title, event_date::text, description
-       from public.company_events
-      where event_type = 'holiday'
-        and event_date >= $1::date and event_date < ($1::date + interval '1 month')
-      order by event_date`,
-    [first]
+    `select c.title, c.event_date::text, c.description, b.name as branch_name
+       from public.company_events c
+       left join public.branches b on b.id = c.branch_id
+      where c.event_type = 'holiday'
+        and c.event_date >= $1::date and c.event_date < ($1::date + interval '1 month')
+        and (c.branch_id is null or $2::int is null or c.branch_id = $2::int)
+      order by c.event_date`,
+    [first, scope.branchId]
   )
 
   const zone = await client
@@ -180,9 +201,18 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
           .then((r) => r.rows[0]?.name ?? null)
           .catch(() => null)
 
+  const branchName =
+    scope.branchId === null
+      ? null
+      : await client
+          .query<{ name: string }>("select name from public.branches where id = $1", [scope.branchId])
+          .then((r) => r.rows[0]?.name ?? null)
+          .catch(() => null)
+
   return {
     company: await loadCompanyHeader(client),
     departmentName,
+    branchName,
     zone,
     employees: employees.rows,
     attendance: attendance.rows,
@@ -393,20 +423,21 @@ export async function buildAttendanceWorkbook(
   // one is still a list as far as the query is concerned, but to whoever
   // opens it it is that person's month, so it is named after them.
   const single = data.employees.length === 1 ? data.employees[0]! : null
+  const branchSuffix = data.branchName ? ` · ${data.branchName}` : ""
   const scopeLabel = single
     ? `${single.full_name} (${single.employee_code})`
     : data.departmentName
       ? `${data.departmentName} — ${data.employees.length} employees`
       : scope.employeeIds?.length
-        ? `${data.employees.length} selected employees`
-        : "All employees"
+        ? `${data.employees.length} selected employees${branchSuffix}`
+        : `All employees${branchSuffix}`
   const scopeName = single
     ? single.full_name
     : data.departmentName
       ? data.departmentName
       : scope.employeeIds?.length
         ? `${data.employees.length}_Employees`
-        : "All_Employees"
+        : data.branchName ?? "All_Employees"
 
   const totals = data.employees.map((e) => totalsFor(e, data, month, workingDays))
   const sum = (pick: (t: EmployeeTotals) => number) => totals.reduce((a, t) => a + pick(t), 0)
@@ -418,28 +449,29 @@ export async function buildAttendanceWorkbook(
   // ----------------------------------------------------------- Summary
   const summary = book.addWorksheet("Summary", { views: [{ state: "frozen", ySplit: 0 }] })
   summary.columns = [
-    { width: 14 }, { width: 26 }, { width: 18 }, { width: 13 }, { width: 10 },
-    { width: 11 }, { width: 10 }, { width: 10 }, { width: 13 }, { width: 14 },
-    { width: 13 }, { width: 13 }, { width: 16 },
+    { width: 14 }, { width: 26 }, { width: 18 }, { width: 16 }, { width: 13 },
+    { width: 10 }, { width: 11 }, { width: 10 }, { width: 10 }, { width: 13 },
+    { width: 14 }, { width: 13 }, { width: 13 }, { width: 16 },
   ]
 
-  titleRow(summary, data.company.name, 13, 16)
+  titleRow(summary, data.company.name, 14, 16)
   if (data.company.address) {
     const row = summary.addRow([data.company.address])
-    summary.mergeCells(row.number, 1, row.number, 13)
+    summary.mergeCells(row.number, 1, row.number, 14)
     row.getCell(1).font = { color: { argb: "FF5A6B62" }, size: 10 }
   }
-  titleRow(summary, `Attendance Report — ${period}`, 13, 13)
+  titleRow(summary, `Attendance Report — ${period}`, 14, 13)
   summary.addRow([])
 
   labelRow(summary, "Scope", scopeLabel, 6)
+  labelRow(summary, "Office", data.branchName ?? "All offices", 6)
   labelRow(summary, "Office hours", `${OFFICE.label}  ·  ${OFFICE.hoursPerDay.toFixed(2)} hours per day`, 6)
   labelRow(summary, "Working week", "Monday to Friday (Saturday and Sunday off)", 6)
   labelRow(summary, "Generated", new Intl.DateTimeFormat("en-IN", { timeZone: data.zone, dateStyle: "medium", timeStyle: "short" }).format(new Date()), 6)
   summary.addRow([])
 
   // The four figures the report exists to give, before any detail.
-  titleRow(summary, "Month at a glance", 13, 12)
+  titleRow(summary, "Month at a glance", 14, 12)
   labelRow(summary, "1. Total working days", workingDays.length, 4)
   labelRow(summary, "2. Total leaves", single ? sum((t) => t.leaves) : `${sum((t) => t.leaves)} day(s) across ${data.employees.length} employees`, 4)
   labelRow(summary, "3. Festival holidays", data.holidays.length === 0 ? "0 — none recorded for this month" : `${data.holidays.length} (see Holidays sheet)`, 4)
@@ -447,9 +479,9 @@ export async function buildAttendanceWorkbook(
   summary.addRow([])
 
   headerRow(summary, [
-    "Employee code", "Employee name", "Department", "Working days", "Present",
-    "Half days", "Leaves", "Absent", "Total hours", "Expected hours",
-    "Difference", "Late arrivals", "No check-out",
+    "Employee code", "Employee name", "Department", "Office", "Working days",
+    "Present", "Half days", "Leaves", "Absent", "Total hours",
+    "Expected hours", "Difference", "Late arrivals", "No check-out",
   ])
 
   for (const t of totals) {
@@ -457,6 +489,7 @@ export async function buildAttendanceWorkbook(
       t.employee.employee_code,
       t.employee.full_name,
       t.employee.department_name ?? "—",
+      t.employee.branch_name ?? "—",
       t.workingDays,
       t.present,
       t.halfDays,
@@ -468,18 +501,18 @@ export async function buildAttendanceWorkbook(
       t.late,
       t.missingCheckOut,
     ])
-    row.getCell(9).numFmt = "0.00"
     row.getCell(10).numFmt = "0.00"
     row.getCell(11).numFmt = "0.00"
+    row.getCell(12).numFmt = "0.00"
     // A shortfall is the number someone is looking for; colour is the fastest
     // way to find it in a sheet of forty rows.
-    row.getCell(11).font = { color: { argb: t.hours < t.expectedHours ? "FFB42318" : "FF107569" } }
-    if (t.absent > 0) row.getCell(8).font = { color: { argb: "FFB42318" }, bold: true }
+    row.getCell(12).font = { color: { argb: t.hours < t.expectedHours ? "FFB42318" : "FF107569" } }
+    if (t.absent > 0) row.getCell(9).font = { color: { argb: "FFB42318" }, bold: true }
   }
 
   if (totals.length > 1) {
     const row = summary.addRow([
-      "", "TOTAL", "", sum((t) => t.workingDays), sum((t) => t.present), sum((t) => t.halfDays),
+      "", "TOTAL", "", "", sum((t) => t.workingDays), sum((t) => t.present), sum((t) => t.halfDays),
       sum((t) => t.leaves), sum((t) => t.absent), Math.round(sum((t) => t.hours) * 100) / 100,
       sum((t) => t.expectedHours), Math.round((sum((t) => t.hours) - sum((t) => t.expectedHours)) * 100) / 100,
       sum((t) => t.late), sum((t) => t.missingCheckOut),
@@ -488,9 +521,9 @@ export async function buildAttendanceWorkbook(
       cell.font = { bold: true }
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TINT } }
     })
-    row.getCell(9).numFmt = "0.00"
     row.getCell(10).numFmt = "0.00"
     row.getCell(11).numFmt = "0.00"
+    row.getCell(12).numFmt = "0.00"
   }
 
   summary.addRow([])
@@ -498,7 +531,7 @@ export async function buildAttendanceWorkbook(
     "Working days exclude weekends and the holidays listed on the Holidays sheet, and start from a joining date that falls inside the month. " +
       "Hours are counted only for days with both a check-in and a check-out; the \"No check-out\" column counts the rest.",
   ])
-  summary.mergeCells(note.number, 1, note.number, 13)
+  summary.mergeCells(note.number, 1, note.number, 14)
   note.getCell(1).font = { size: 9, color: { argb: "FF5A6B62" }, italic: true }
   note.getCell(1).alignment = { wrapText: true }
   note.height = 28
@@ -506,11 +539,12 @@ export async function buildAttendanceWorkbook(
   // ------------------------------------------------------------- Daily
   const daily = book.addWorksheet("Daily", { views: [{ state: "frozen", ySplit: 1 }] })
   daily.columns = [
-    { width: 13 }, { width: 12 }, { width: 14 }, { width: 26 }, { width: 12 },
-    { width: 12 }, { width: 12 }, { width: 11 }, { width: 13 }, { width: 9 },
+    { width: 13 }, { width: 12 }, { width: 14 }, { width: 26 }, { width: 16 },
+    { width: 12 }, { width: 12 }, { width: 12 }, { width: 11 }, { width: 13 },
+    { width: 9 },
   ]
   headerRow(daily, [
-    "Date", "Day", "Employee code", "Employee name", "Status",
+    "Date", "Day", "Employee code", "Employee name", "Office", "Status",
     "Check in", "Check out", "Break (min)", "Working hours", "Late",
   ])
 
@@ -538,6 +572,7 @@ export async function buildAttendanceWorkbook(
         dayName(date),
         employee.employee_code,
         employee.full_name,
+        employee.branch_name ?? "—",
         status.replace(/_/g, " "),
         timeInOffice(row?.check_in ?? null, data.zone),
         timeInOffice(row?.check_out ?? null, data.zone),
@@ -545,28 +580,34 @@ export async function buildAttendanceWorkbook(
         worked ?? "",
         row?.check_in && minutesInOffice(row.check_in, data.zone) > OFFICE_START_MINUTES ? "Yes" : "",
       ])
-      line.getCell(9).numFmt = "0.00"
-      if (status === "absent") line.getCell(5).font = { color: { argb: "FFB42318" }, bold: true }
-      if (status === "on_leave") line.getCell(5).font = { color: { argb: "FF9A6700" } }
-      if (line.getCell(10).value === "Yes") line.getCell(10).font = { color: { argb: "FF9A6700" } }
+      line.getCell(10).numFmt = "0.00"
+      if (status === "absent") line.getCell(6).font = { color: { argb: "FFB42318" }, bold: true }
+      if (status === "on_leave") line.getCell(6).font = { color: { argb: "FF9A6700" } }
+      if (line.getCell(11).value === "Yes") line.getCell(11).font = { color: { argb: "FF9A6700" } }
     }
   }
-  daily.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 10 } }
+  daily.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 11 } }
 
   // ---------------------------------------------------------- Holidays
   const sheet = book.addWorksheet("Holidays")
-  sheet.columns = [{ width: 13 }, { width: 12 }, { width: 34 }, { width: 46 }]
-  headerRow(sheet, ["Date", "Day", "Festival / Holiday", "Notes"])
+  sheet.columns = [{ width: 13 }, { width: 12 }, { width: 34 }, { width: 18 }, { width: 40 }]
+  headerRow(sheet, ["Date", "Day", "Festival / Holiday", "Office", "Notes"])
   if (data.holidays.length === 0) {
     const row = sheet.addRow(["No festival holidays are recorded for this month."])
-    sheet.mergeCells(row.number, 1, row.number, 4)
+    sheet.mergeCells(row.number, 1, row.number, 5)
     row.getCell(1).font = { italic: true, color: { argb: "FF5A6B62" } }
     const how = sheet.addRow(["Add them in the portal under Calendar, as events of type \"holiday\"; they are then excluded from working days here."])
-    sheet.mergeCells(how.number, 1, how.number, 4)
+    sheet.mergeCells(how.number, 1, how.number, 5)
     how.getCell(1).font = { size: 9, color: { argb: "FF5A6B62" } }
   } else {
     for (const h of data.holidays) {
-      sheet.addRow([h.event_date.slice(0, 10), dayName(h.event_date), h.title, h.description ?? ""])
+      sheet.addRow([
+        h.event_date.slice(0, 10),
+        dayName(h.event_date),
+        h.title,
+        h.branch_name ?? "All offices",
+        h.description ?? "",
+      ])
     }
   }
 

@@ -14,16 +14,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmailSettingsPanel } from "@/features/settings/EmailSettingsPanel"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
+  deleteBranch,
+  listBranches,
   deleteDepartment,
   deleteDesignation,
   listDepartments,
   listDesignations,
 } from "@/features/employees/api"
 import { getCompanySettings, listAuditLogs, listRoles, updateCompanySettings } from "@/features/settings/api"
+import { BranchFormDialog } from "@/features/settings/BranchFormDialog"
 import { DepartmentFormDialog } from "@/features/settings/DepartmentFormDialog"
 import { DesignationFormDialog } from "@/features/settings/DesignationFormDialog"
 import { useAuth } from "@/features/auth/AuthContext"
-import type { Department, Designation } from "@/features/employees/types"
+import type { Branch, Department, Designation } from "@/features/employees/types"
 
 function CompanyProfileTab() {
   const { user } = useAuth()
@@ -153,6 +156,117 @@ function DepartmentsTab() {
         </Table>
       </div>
       <DepartmentFormDialog open={formOpen} onOpenChange={setFormOpen} department={editing} />
+    </div>
+  )
+}
+
+/**
+ * The company's offices.
+ *
+ * A branch is a place, not a tenant: one company, one letterhead, several
+ * addresses. What it buys is attendance that can be read per office, and
+ * holidays that apply to one office and not the others.
+ */
+function BranchesTab() {
+  const queryClient = useQueryClient()
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<Branch | undefined>(undefined)
+
+  const { data: branches, isLoading } = useQuery({ queryKey: ["branches"], queryFn: listBranches })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteBranch,
+    onSuccess: () => {
+      toast.success("Office removed")
+      queryClient.invalidateQueries({ queryKey: ["branches"] })
+      // Anyone posted there is now unposted, which the employee list shows.
+      queryClient.invalidateQueries({ queryKey: ["employees"] })
+    },
+    onError: () => toast.error("Could not remove the office"),
+  })
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Offices people are posted to. Attendance can be exported per office, and a holiday can be set for one
+          office only.
+        </p>
+        <Button
+          className="rounded-md"
+          onClick={() => {
+            setEditing(undefined)
+            setFormOpen(true)
+          }}
+        >
+          <Plus className="mr-2 size-4" />
+          New Office
+        </Button>
+      </div>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>City</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead className="w-20" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <Skeleton className="h-8 w-full rounded-md" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && (branches?.length ?? 0) === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                  No offices yet. Add one and you can post employees to it.
+                </TableCell>
+              </TableRow>
+            )}
+            {branches?.map((b) => (
+              <TableRow key={b.id}>
+                <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                <TableCell className="text-muted-foreground">{b.code ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{b.city ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{b.address ?? "—"}</TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
+                        setEditing(b)
+                        setFormOpen(true)
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (confirm(`Remove "${b.name}"? Anyone posted there becomes unposted.`)) {
+                          deleteMutation.mutate(b.id)
+                        }
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <BranchFormDialog open={formOpen} onOpenChange={setFormOpen} branch={editing} />
     </div>
   )
 }
@@ -335,6 +449,7 @@ export function SettingsPage() {
         <TabsList className="rounded-md">
           <TabsTrigger value="company">Company Profile</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
+          <TabsTrigger value="branches">Offices</TabsTrigger>
           <TabsTrigger value="designations">Designations</TabsTrigger>
           <TabsTrigger value="roles">Roles & Permissions</TabsTrigger>
           <TabsTrigger value="email">Email / SMTP</TabsTrigger>
@@ -346,6 +461,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="departments" className="mt-4">
           <DepartmentsTab />
+        </TabsContent>
+        <TabsContent value="branches" className="mt-4">
+          <BranchesTab />
         </TabsContent>
         <TabsContent value="designations" className="mt-4">
           <DesignationsTab />

@@ -7,6 +7,18 @@ export interface Department {
   description?: string | null
 }
 
+/** An office. One company, several places people work from. */
+export interface Branch {
+  id: number
+  name: string
+  /** Short form for narrow columns: BLR, HYD. */
+  code?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  isActive?: boolean
+}
+
 export interface Designation {
   id: number
   title: string
@@ -22,6 +34,8 @@ export interface EmployeeSummary {
   address: string | null
   photoUrl: string | null
   departmentId: number | null
+  branchId?: number | null
+  branchName?: string | null
   departmentName: string | null
   designationId: number | null
   designationTitle: string | null
@@ -52,6 +66,7 @@ export interface EmployeeListParams {
   pageSize: number
   search?: string
   departmentId?: number
+  branchId?: number
   designationId?: number
   status?: EmployeeStatus
   sortBy?: string
@@ -75,6 +90,7 @@ export interface EmployeeFormValues {
   dob?: string
   gender?: Gender
   departmentId?: number
+  branchId?: number
   designationId?: number
   // Nullable, not merely optional: clearing the field has to send null so the
   // reporting line can actually be removed, where undefined would leave it.

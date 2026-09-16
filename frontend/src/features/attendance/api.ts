@@ -103,12 +103,15 @@ export async function downloadAttendanceReport(params: {
   /** Empty or omitted means everyone the caller is allowed to see. */
   employeeIds?: number[]
   departmentId?: number | null
+  branchId?: number | null
   /** Whose report it is, for the saved file's name. */
   filename?: string
 }): Promise<void> {
   const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
   if (params.employeeIds?.length) query.set("employeeIds", params.employeeIds.join(","))
   else if (params.departmentId) query.set("departmentId", String(params.departmentId))
+  // A branch narrows whichever of those is in play, so it is set either way.
+  if (params.branchId) query.set("branchId", String(params.branchId))
 
   const blob = await fetchApiBlob(`/attendance/report.xlsx?${query.toString()}`)
   const url = URL.createObjectURL(blob)

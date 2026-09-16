@@ -4,6 +4,7 @@ import { toCamel, definedOnly } from "@/lib/case"
 import { invokeAdmin } from "@/lib/adminApi"
 import { likePattern, logAudit, pageRange } from "@/lib/query"
 import type {
+  Branch,
   Department,
   Designation,
   Employee,
@@ -15,7 +16,7 @@ import type {
 
 const SUMMARY_COLUMNS =
   "id, employee_code, full_name, email, phone, address, photo_url, department_id, " +
-  "department_name, designation_id, designation_title, status, joining_date"
+  "department_name, designation_id, designation_title, branch_id, branch_name, status, joining_date"
 
 const SORT_COLUMNS: Record<string, string> = {
   fullName: "full_name",
@@ -35,6 +36,7 @@ function toEmployeeRow(values: Partial<EmployeeFormValues>) {
     dob: values.dob,
     gender: values.gender,
     department_id: values.departmentId,
+    branch_id: values.branchId,
     designation_id: values.designationId,
     reporting_manager_id: values.reportingManagerId,
     joining_date: values.joiningDate,
@@ -229,4 +231,43 @@ export async function updateDesignation(
 
 export async function deleteDesignation(id: number): Promise<void> {
   unwrapVoid(await supabase.from("designations").delete().eq("id", id))
+}
+
+// --------------------------------------------------------------- branches
+/**
+ * The company's offices. Readable by everyone — an employee record names a
+ * branch and the name has to resolve — and writable by HR, which the table's
+ * row security enforces rather than this module.
+ */
+export async function listBranches(): Promise<Branch[]> {
+  return unwrap<Branch[]>(
+    await supabase.from("branches").select("id, name, code, address, city, state, is_active").order("name")
+  )
+}
+
+export async function createBranch(payload: {
+  name: string
+  code?: string
+  address?: string
+  city?: string
+  state?: string
+}): Promise<Branch> {
+  return unwrap<Branch>(
+    await supabase
+      .from("branches")
+      .insert(definedOnly(payload))
+      .select("id, name, code, address, city, state, is_active")
+      .single()
+  )
+}
+
+export async function updateBranch(
+  id: number,
+  payload: { name?: string; code?: string; address?: string; city?: string; state?: string }
+): Promise<void> {
+  unwrapVoid(await supabase.from("branches").update(definedOnly(payload)).eq("id", id))
+}
+
+export async function deleteBranch(id: number): Promise<void> {
+  unwrapVoid(await supabase.from("branches").delete().eq("id", id))
 }
