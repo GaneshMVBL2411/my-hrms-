@@ -37,7 +37,7 @@ import {
   onTaskCompleted,
 } from "./email/events.js"
 import { buildLetter, LETTER_TITLES, letterFilename, renderLetterPdf, type LetterPayload } from "./letter-pdf.js"
-import { buildAttendanceWorkbook, endOfMonth } from "./attendance-report.js"
+import { attendanceSummary, buildAttendanceWorkbook, endOfMonth, type ReportScope } from "./attendance-report.js"
 import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
   loginBlocked,
@@ -553,7 +553,14 @@ app.get("/letters/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
  */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
-app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => {
+/**
+ * Reads the scope out of a query string, or says what is wrong with it.
+ *
+ * Shared by the workbook and the preview beside it, so the file can never
+ * cover a different period or a different set of people than the numbers
+ * someone read before asking for it.
+ */
+function readReportScope(req: express.Request): { scope: ReportScope } | { error: string; status: number } {
   const now = new Date()
   const month = Number(req.query.month ?? now.getMonth() + 1)
   const year = Number(req.query.year ?? now.getFullYear())
@@ -566,63 +573,95 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
   const departmentId = req.query.departmentId === undefined ? null : Number(req.query.departmentId)
   const branchId = req.query.branchId === undefined ? null : Number(req.query.branchId)
 
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    return res.status(400).json({ error: "Invalid month" })
+  if (!Number.isInteger(month) || month < 1 || month > 12) return { error: "Invalid month", status: 400 }
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return { error: "Invalid year", status: 400 }
+  if (idList.some((n) => !Number.isInteger(n) || n <= 0)) return { error: "Invalid employee id", status: 400 }
+  // A cap, because this is a query parameter and the list goes into the sheet
+  // and into an `= any(...)`. Well past any real company's headcount.
+  if (idList.length > 500) return { error: "Too many employees selected", status: 400 }
+  if (departmentId !== null && (!Number.isInteger(departmentId) || departmentId <= 0)) {
+    return { error: "Invalid department id", status: 400 }
   }
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
-    return res.status(400).json({ error: "Invalid year" })
+  if (branchId !== null && (!Number.isInteger(branchId) || branchId <= 0)) {
+    return { error: "Invalid branch id", status: 400 }
   }
 
   // from/to when given, the whole of month/year when not. The month form is
-  // what the phone sends and what older links carry, and it stays exact:
-  // the first of the month to its last day, whatever the length.
+  // what older links carry, and it stays exact: the first of the month to its
+  // last day, whatever the length.
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
   const from = typeof req.query.from === "string" && req.query.from ? req.query.from : monthStart
   const to = typeof req.query.to === "string" && req.query.to ? req.query.to : endOfMonth(monthStart)
 
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
-    return res.status(400).json({ error: "Dates must be YYYY-MM-DD" })
+    return { error: "Dates must be YYYY-MM-DD", status: 400 }
   }
-  if (from > to) {
-    return res.status(400).json({ error: "The start date is after the end date" })
-  }
+  if (from > to) return { error: "The start date is after the end date", status: 400 }
   // A year and a day. Past that the sheet stops being a sheet someone reads,
   // and the per-day loop over every employee stops being cheap.
   if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) {
-    return res.status(400).json({ error: "That range is longer than a year" })
-  }
-  if (idList.some((n) => !Number.isInteger(n) || n <= 0)) {
-    return res.status(400).json({ error: "Invalid employee id" })
-  }
-  // A cap, because this is a query parameter and the list goes into the sheet
-  // and into an `= any(...)`. Well past any real company's headcount.
-  if (idList.length > 500) {
-    return res.status(400).json({ error: "Too many employees selected" })
-  }
-  if (departmentId !== null && (!Number.isInteger(departmentId) || departmentId <= 0)) {
-    return res.status(400).json({ error: "Invalid department id" })
-  }
-  if (branchId !== null && (!Number.isInteger(branchId) || branchId <= 0)) {
-    return res.status(400).json({ error: "Invalid branch id" })
+    return { error: "That range is longer than a year", status: 400 }
   }
 
-  const employeeIds = idList.length > 0 ? Array.from(new Set(idList)) : null
+  return {
+    scope: {
+      from,
+      to,
+      employeeIds: idList.length > 0 ? Array.from(new Set(idList)) : null,
+      departmentId,
+      branchId,
+    },
+  }
+}
+
+/**
+ * Whether this caller may have this scope.
+ *
+ * Everyone may pull their own; anything wider — several people, a department,
+ * an office, the whole company — is HR's, and is refused rather than quietly
+ * narrowed, because a report that silently contains one row is worse than one
+ * that says who it is for.
+ */
+async function mayReadScope(client: import("pg").PoolClient, req: express.Request, scope: ReportScope): Promise<boolean> {
+  const { rows } = await client.query<{ is_hr: boolean }>("select public.app_is_hr() as is_hr")
+  if (rows[0]?.is_hr === true) return true
+  return (
+    scope.employeeIds !== null &&
+    scope.employeeIds.length === 1 &&
+    scope.employeeIds[0] === req.user!.employeeId &&
+    scope.departmentId === null &&
+    scope.branchId === null
+  )
+}
+
+/**
+ * The same numbers the workbook would contain, for the screen beside the
+ * button. Looking before downloading is the point: the totals and the
+ * selection can be checked without opening a file.
+ */
+app.get("/attendance/report.json", requireAuth, apiLimiter, async (req, res) => {
+  const parsed = readReportScope(req)
+  if ("error" in parsed) return res.status(parsed.status).json({ error: parsed.error })
+
+  const result = await withSession(req.user!, async (client) => {
+    if (!(await mayReadScope(client, req, parsed.scope))) return "forbidden" as const
+    return attendanceSummary(client, parsed.scope)
+  })
+
+  if (result === "forbidden") {
+    return res.status(403).json({ error: "Only HR can read attendance for anyone but themselves" })
+  }
+  if (!result) return res.status(404).json({ error: "No employees match that selection" })
+  res.json(result)
+})
+
+app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => {
+  const parsed = readReportScope(req)
+  if ("error" in parsed) return res.status(parsed.status).json({ error: parsed.error })
 
   const report = await withSession(req.user!, async (client) => {
-    const { rows } = await client.query<{ is_hr: boolean }>("select public.app_is_hr() as is_hr")
-    const isHr = rows[0]?.is_hr === true
-    // Everyone may pull their own month. Anything wider — several people, a
-    // department, the whole company — is HR's.
-    const ownOnly =
-      employeeIds !== null &&
-      employeeIds.length === 1 &&
-      employeeIds[0] === req.user!.employeeId &&
-      departmentId === null &&
-      branchId === null
-    if (!isHr && !ownOnly) {
-      return "forbidden" as const
-    }
-    return buildAttendanceWorkbook(client, { from, to, employeeIds, departmentId, branchId })
+    if (!(await mayReadScope(client, req, parsed.scope))) return "forbidden" as const
+    return buildAttendanceWorkbook(client, parsed.scope)
   })
 
   if (report === "forbidden") {

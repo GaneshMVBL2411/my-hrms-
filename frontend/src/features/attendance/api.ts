@@ -133,3 +133,54 @@ export async function downloadAttendanceReport(params: {
   // Revoked on the next tick: revoking synchronously races the click in Safari.
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+/** One row of the preview — the same numbers the Summary sheet would carry. */
+export interface AttendancePreviewRow {
+  employeeId: number
+  employeeCode: string
+  employeeName: string
+  departmentName: string | null
+  branchName: string | null
+  workingDays: number
+  present: number
+  halfDays: number
+  leaves: number
+  absent: number
+  hours: number
+  expectedHours: number
+  late: number
+  missingCheckOut: number
+}
+
+export interface AttendancePreview {
+  period: string
+  from: string
+  to: string
+  scopeLabel: string
+  workingDays: number
+  officeHours: string
+  hoursPerDay: number
+  holidays: { date: string; title: string; branch: string | null }[]
+  totals: { leaves: number; hours: number; expectedHours: number; present: number; absent: number }
+  rows: AttendancePreviewRow[]
+}
+
+/**
+ * What the workbook would contain, for the screen beside the button.
+ *
+ * The server builds both from one function, so what is read here and what
+ * lands in the file cannot drift apart.
+ */
+export async function previewAttendance(params: {
+  from: string
+  to: string
+  employeeIds?: number[]
+  departmentId?: number | null
+  branchId?: number | null
+}): Promise<AttendancePreview> {
+  const query = new URLSearchParams({ from: params.from, to: params.to })
+  if (params.employeeIds?.length) query.set("employeeIds", params.employeeIds.join(","))
+  else if (params.departmentId) query.set("departmentId", String(params.departmentId))
+  if (params.branchId) query.set("branchId", String(params.branchId))
+  return apiRequest(`/attendance/report.json?${query.toString()}`)
+}

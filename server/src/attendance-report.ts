@@ -451,10 +451,15 @@ export function reportFilename(scope: ReportScope, who: string): string {
  * Three sheets, in the order someone reads them: what the month came to, what
  * each day was, and which days the office was closed.
  */
-export async function buildAttendanceWorkbook(
-  client: PoolClient,
-  scope: ReportScope
-): Promise<{ buffer: Buffer; filename: string } | null> {
+/**
+ * Everything both the workbook and the on-screen preview are built from.
+ *
+ * Shared because they must agree. The preview exists so that someone can see
+ * what a selection comes to before downloading it, and a preview computed
+ * separately from the file would eventually disagree with it — which is
+ * worse than no preview, since it would be believed.
+ */
+async function prepare(client: PoolClient, scope: ReportScope) {
   const data = await loadReport(client, scope)
   if (data.employees.length === 0) return null
 
@@ -484,6 +489,69 @@ export async function buildAttendanceWorkbook(
         : data.branchName ?? "All_Employees"
 
   const totals = data.employees.map((e) => totalsFor(e, data, month, workingDays))
+  return { data, month, holidayDates, workingDays, period, single, scopeLabel, scopeName, totals }
+}
+
+/**
+ * The same numbers as the Summary sheet, as JSON, for the screen.
+ *
+ * Deliberately not the Daily sheet: a month of every employee's days is a
+ * file, not a page, and the point of looking before downloading is to check
+ * the totals and the selection — that it is the right people, the right
+ * days, and that the hours are not obviously wrong.
+ */
+export async function attendanceSummary(client: PoolClient, scope: ReportScope) {
+  const prepared = await prepare(client, scope)
+  if (!prepared) return null
+  const { data, workingDays, period, scopeLabel, totals } = prepared
+  const sum = (pick: (t: EmployeeTotals) => number) => totals.reduce((a, t) => a + pick(t), 0)
+
+  return {
+    period,
+    from: scope.from,
+    to: scope.to,
+    scopeLabel,
+    workingDays: workingDays.length,
+    officeHours: OFFICE.label,
+    hoursPerDay: OFFICE.hoursPerDay,
+    holidays: data.holidays.map((h) => ({
+      date: h.event_date.slice(0, 10),
+      title: h.title,
+      branch: h.branch_name,
+    })),
+    totals: {
+      leaves: sum((t) => t.leaves),
+      hours: Math.round(sum((t) => t.hours) * 100) / 100,
+      expectedHours: sum((t) => t.expectedHours),
+      present: sum((t) => t.present),
+      absent: sum((t) => t.absent),
+    },
+    rows: totals.map((t) => ({
+      employeeId: t.employee.id,
+      employeeCode: t.employee.employee_code,
+      employeeName: t.employee.full_name,
+      departmentName: t.employee.department_name,
+      branchName: t.employee.branch_name,
+      workingDays: t.workingDays,
+      present: t.present,
+      halfDays: t.halfDays,
+      leaves: t.leaves,
+      absent: t.absent,
+      hours: t.hours,
+      expectedHours: t.expectedHours,
+      late: t.late,
+      missingCheckOut: t.missingCheckOut,
+    })),
+  }
+}
+
+export async function buildAttendanceWorkbook(
+  client: PoolClient,
+  scope: ReportScope
+): Promise<{ buffer: Buffer; filename: string } | null> {
+  const prepared = await prepare(client, scope)
+  if (!prepared) return null
+  const { data, month, holidayDates, workingDays, period, single, scopeLabel, scopeName, totals } = prepared
   const sum = (pick: (t: EmployeeTotals) => number) => totals.reduce((a, t) => a + pick(t), 0)
 
   const book = new ExcelJS.Workbook()

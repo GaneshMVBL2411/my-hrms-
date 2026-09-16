@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { downloadAttendanceReport } from "@/features/attendance/api"
+import { downloadAttendanceReport, previewAttendance } from "@/features/attendance/api"
+import { AttendancePreviewTable } from "@/features/attendance/AttendancePreviewTable"
 import { inAppShell } from "@/lib/appShell"
 import { EmployeePicker } from "@/features/attendance/EmployeePicker"
 import { listBranches, listDepartments, listEmployees } from "@/features/employees/api"
@@ -92,6 +93,30 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
 
   const departmentName = departments?.find((d) => d.id === Number(department))?.name
   const branchName = branches?.find((b) => b.id === Number(branch))?.name
+
+  // The same request the download will make, read as JSON so the numbers can
+  // be checked before a file is asked for. Re-runs on every change of dates
+  // or selection, which is what makes it a preview rather than a report.
+  const selection = {
+    from,
+    to,
+    employeeIds: scope === "mine" ? (employeeId ? [employeeId] : []) : picked,
+    departmentId: scope === "mine" || department === ALL ? null : Number(department),
+    branchId: scope === "mine" || branch === ALL ? null : Number(branch),
+  }
+  const valid = Boolean(from && to && from <= to)
+  const {
+    data: preview,
+    isFetching: previewing,
+    error: previewError,
+  } = useQuery({
+    queryKey: ["attendance", "preview", selection],
+    queryFn: () => previewAttendance(selection),
+    enabled: valid && (scope === "team" || Boolean(employeeId)),
+    // A 403 or an empty selection is an answer, not a blip worth retrying.
+    retry: false,
+    placeholderData: (previous) => previous,
+  })
 
   const download = async () => {
     if (!from || !to || from > to) {
@@ -257,6 +282,14 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
           the holidays in it. Office hours 09:30 AM to 06:30 PM.
           {scope === "team" && " Pick an office, a department, any number of people — or leave it on all."}
         </p>
+      </CardContent>
+
+      <CardContent className="border-t border-border pt-4">
+        <AttendancePreviewTable
+          preview={preview}
+          loading={previewing}
+          error={previewError as Error | null}
+        />
       </CardContent>
     </Card>
   )
