@@ -24,7 +24,12 @@
 # second Metro on 8082 is worse than none — the phone attaches to whichever
 # it was last pointed at, and the two can be serving different code.
 
-param([switch] $Hidden)
+param(
+  [switch] $Hidden,
+  # For dev-go.ps1, which starts Metro itself, in Expo Go mode, in the window
+  # you are reading. Without this it would find 8081 taken and leave it alone.
+  [switch] $NoMetro
+)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -71,7 +76,9 @@ function Start-Server([string] $title, [string] $dir, [string] $command, [int] $
 Write-Host ("HRMS dev servers" + $(if ($Hidden) { " (hidden, logging to .dev-logs\)" } else { "" })) -ForegroundColor Cyan
 Start-Server "API"    (Join-Path $root "server")   "npm run dev"     3001
 Start-Server "Web"    (Join-Path $root "frontend") "npx vite --host" 5173
-Start-Server "Metro"  (Join-Path $root "mobile")   "npm run dev"     8081
+if (-not $NoMetro) {
+  Start-Server "Metro"  (Join-Path $root "mobile")   "npm run dev"     8081
+}
 
 # The address the phone will use, so it is in front of you without asking.
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |

@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File dev-up.ps1",
+    "go": "powershell -ExecutionPolicy Bypass -File dev-go.ps1",
     "stop": "powershell -ExecutionPolicy Bypass -File dev-down.ps1"
   },
   "devDependencies": {
