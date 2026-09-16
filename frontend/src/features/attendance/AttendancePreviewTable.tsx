@@ -54,6 +54,7 @@ export function AttendancePreviewTable({
           {preview.workingDays} working days · {preview.holidays.length} holiday
           {preview.holidays.length === 1 ? "" : "s"} · {short(preview.totals.hours)} of{" "}
           {short(preview.totals.expectedHours)} hours
+          {preview.totals.overtime > 0 && ` · ${short(preview.totals.overtime)} overtime`}
         </p>
       </div>
 
@@ -77,6 +78,7 @@ export function AttendancePreviewTable({
               <TableHead className="text-right">Absent</TableHead>
               <TableHead className="text-right">Hours</TableHead>
               <TableHead className="text-right">Expected</TableHead>
+              <TableHead className="text-right">Overtime</TableHead>
               <TableHead className="text-right">Late</TableHead>
             </TableRow>
           </TableHeader>
@@ -96,6 +98,9 @@ export function AttendancePreviewTable({
                 </TableCell>
                 <TableCell className="text-right font-medium text-foreground">{short(r.hours)}</TableCell>
                 <TableCell className="text-right text-muted-foreground">{short(r.expectedHours)}</TableCell>
+                <TableCell className={`text-right ${r.overtime > 0 ? "font-semibold text-warning" : "text-muted-foreground"}`}>
+                  {short(r.overtime)}
+                </TableCell>
                 <TableCell className="text-right text-muted-foreground">{r.late}</TableCell>
               </TableRow>
             ))}
@@ -110,6 +115,7 @@ export function AttendancePreviewTable({
                 <TableCell className="text-right font-semibold">{preview.totals.absent}</TableCell>
                 <TableCell className="text-right font-semibold">{short(preview.totals.hours)}</TableCell>
                 <TableCell className="text-right font-semibold">{short(preview.totals.expectedHours)}</TableCell>
+                <TableCell className="text-right font-semibold">{short(preview.totals.overtime)}</TableCell>
                 <TableCell />
               </TableRow>
             )}
@@ -118,7 +124,8 @@ export function AttendancePreviewTable({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        This is the Summary sheet of the download. The file also has every day, and the holidays.
+        This is the Summary sheet of the download. The file also has every day, with its own overtime, and the
+        holidays. Overtime counts hours past a full day, and every hour worked on a weekend or a holiday.
       </p>
     </div>
   )

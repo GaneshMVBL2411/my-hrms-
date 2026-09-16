@@ -213,8 +213,8 @@ export function AttendanceExport({ user }: { user: SessionUser }) {
       </View>
 
       <Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={styles.hint}>
-        <Text style={styles.hintStrong}>{periodLabel(from, to)}</Text> — totals, every day, and the holidays in
-        it. An Excel file: opens in Excel, Sheets or WPS.
+        <Text style={styles.hintStrong}>{periodLabel(from, to)}</Text> — totals, overtime, every day, and the
+        holidays in it. An Excel file: opens in Excel, Sheets or WPS.
       </Text>
     </View>
   )

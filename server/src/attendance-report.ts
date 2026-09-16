@@ -349,6 +349,10 @@ export interface EmployeeTotals {
   absent: number
   hours: number
   expectedHours: number
+  /** Hours past the standard day, counted per day — see the comment below. */
+  overtime: number
+  /** Of that overtime, the part worked on a weekend or a holiday. */
+  offDayHours: number
   late: number
   missingCheckOut: number
 }
@@ -372,6 +376,8 @@ function totalsFor(
   let halfDays = 0
   let leaves = 0
   let hours = 0
+  let overtime = 0
+  let offDayHours = 0
   let late = 0
   let missingCheckOut = 0
 
@@ -385,10 +391,26 @@ function totalsFor(
   // Hours and punctuality are counted from every record in the period, not
   // only the working days: someone who came in on a Saturday worked those
   // hours, and the sheet would be wrong to drop them.
+  //
+  // Overtime is counted day by day rather than netted over the period. Twelve
+  // hours on Monday and six on Tuesday is three hours of overtime and a short
+  // Tuesday, not a quiet week — netting them would hide both. A day the
+  // office was closed is overtime in full, since none of it was owed.
+  const workingSet = new Set(workingDays)
   for (const row of rows) {
     const worked = hoursBetween(row)
-    if (worked !== null) hours += worked
-    else if (row.check_in) missingCheckOut++
+    if (worked !== null) {
+      hours += worked
+      const date = row.date.slice(0, 10)
+      if (workingSet.has(date)) {
+        overtime += Math.max(worked - OFFICE.hoursPerDay, 0)
+      } else {
+        overtime += worked
+        offDayHours += worked
+      }
+    } else if (row.check_in) {
+      missingCheckOut++
+    }
     if (row.check_in && minutesInOffice(row.check_in, data.zone) > OFFICE_START_MINUTES) late++
   }
 
@@ -403,6 +425,8 @@ function totalsFor(
     absent,
     hours: Math.round(hours * 100) / 100,
     expectedHours: countable.length * OFFICE.hoursPerDay,
+    overtime: Math.round(overtime * 100) / 100,
+    offDayHours: Math.round(offDayHours * 100) / 100,
     late,
     missingCheckOut,
   }
@@ -523,6 +547,7 @@ export async function attendanceSummary(client: PoolClient, scope: ReportScope) 
       leaves: sum((t) => t.leaves),
       hours: Math.round(sum((t) => t.hours) * 100) / 100,
       expectedHours: sum((t) => t.expectedHours),
+      overtime: Math.round(sum((t) => t.overtime) * 100) / 100,
       present: sum((t) => t.present),
       absent: sum((t) => t.absent),
     },
@@ -539,6 +564,8 @@ export async function attendanceSummary(client: PoolClient, scope: ReportScope) 
       absent: t.absent,
       hours: t.hours,
       expectedHours: t.expectedHours,
+      overtime: t.overtime,
+      offDayHours: t.offDayHours,
       late: t.late,
       missingCheckOut: t.missingCheckOut,
     })),
@@ -563,16 +590,16 @@ export async function buildAttendanceWorkbook(
   summary.columns = [
     { width: 14 }, { width: 26 }, { width: 18 }, { width: 16 }, { width: 13 },
     { width: 10 }, { width: 11 }, { width: 10 }, { width: 10 }, { width: 13 },
-    { width: 14 }, { width: 13 }, { width: 13 }, { width: 16 },
+    { width: 14 }, { width: 12 }, { width: 13 }, { width: 13 }, { width: 16 },
   ]
 
-  titleRow(summary, data.company.name, 14, 16)
+  titleRow(summary, data.company.name, 15, 16)
   if (data.company.address) {
     const row = summary.addRow([data.company.address])
-    summary.mergeCells(row.number, 1, row.number, 14)
+    summary.mergeCells(row.number, 1, row.number, 15)
     row.getCell(1).font = { color: { argb: "FF5A6B62" }, size: 10 }
   }
-  titleRow(summary, `Attendance Report — ${period}`, 14, 13)
+  titleRow(summary, `Attendance Report — ${period}`, 15, 13)
   summary.addRow([])
 
   labelRow(summary, "Scope", scopeLabel, 6)
@@ -583,7 +610,7 @@ export async function buildAttendanceWorkbook(
   summary.addRow([])
 
   // The four figures the report exists to give, before any detail.
-  titleRow(summary, "At a glance", 14, 12)
+  titleRow(summary, "At a glance", 15, 12)
   labelRow(summary, "1. Total working days", workingDays.length, 4)
   labelRow(summary, "2. Total leaves", single ? sum((t) => t.leaves) : `${sum((t) => t.leaves)} day(s) across ${data.employees.length} employees`, 4)
   labelRow(summary, "3. Festival holidays", data.holidays.length === 0 ? "0 — none recorded in this period" : `${data.holidays.length} (see Holidays sheet)`, 4)
@@ -593,7 +620,7 @@ export async function buildAttendanceWorkbook(
   headerRow(summary, [
     "Employee code", "Employee name", "Department", "Office", "Working days",
     "Present", "Half days", "Leaves", "Absent", "Total hours",
-    "Expected hours", "Difference", "Late arrivals", "No check-out",
+    "Expected hours", "Overtime", "Difference", "Late arrivals", "No check-out",
   ])
 
   for (const t of totals) {
@@ -609,6 +636,7 @@ export async function buildAttendanceWorkbook(
       t.absent,
       t.hours,
       t.expectedHours,
+      t.overtime,
       Math.round((t.hours - t.expectedHours) * 100) / 100,
       t.late,
       t.missingCheckOut,
@@ -616,9 +644,11 @@ export async function buildAttendanceWorkbook(
     row.getCell(10).numFmt = "0.00"
     row.getCell(11).numFmt = "0.00"
     row.getCell(12).numFmt = "0.00"
+    row.getCell(13).numFmt = "0.00"
+    if (t.overtime > 0) row.getCell(12).font = { color: { argb: "FF9A6700" }, bold: true }
     // A shortfall is the number someone is looking for; colour is the fastest
     // way to find it in a sheet of forty rows.
-    row.getCell(12).font = { color: { argb: t.hours < t.expectedHours ? "FFB42318" : "FF107569" } }
+    row.getCell(13).font = { color: { argb: t.hours < t.expectedHours ? "FFB42318" : "FF107569" } }
     if (t.absent > 0) row.getCell(9).font = { color: { argb: "FFB42318" }, bold: true }
   }
 
@@ -626,7 +656,8 @@ export async function buildAttendanceWorkbook(
     const row = summary.addRow([
       "", "TOTAL", "", "", sum((t) => t.workingDays), sum((t) => t.present), sum((t) => t.halfDays),
       sum((t) => t.leaves), sum((t) => t.absent), Math.round(sum((t) => t.hours) * 100) / 100,
-      sum((t) => t.expectedHours), Math.round((sum((t) => t.hours) - sum((t) => t.expectedHours)) * 100) / 100,
+      sum((t) => t.expectedHours), Math.round(sum((t) => t.overtime) * 100) / 100,
+      Math.round((sum((t) => t.hours) - sum((t) => t.expectedHours)) * 100) / 100,
       sum((t) => t.late), sum((t) => t.missingCheckOut),
     ])
     row.eachCell((cell) => {
@@ -636,14 +667,17 @@ export async function buildAttendanceWorkbook(
     row.getCell(10).numFmt = "0.00"
     row.getCell(11).numFmt = "0.00"
     row.getCell(12).numFmt = "0.00"
+    row.getCell(13).numFmt = "0.00"
   }
 
   summary.addRow([])
   const note = summary.addRow([
     "Working days exclude weekends and the holidays listed on the Holidays sheet, and start from a joining date that falls inside the period. " +
-      "Hours are counted only for days with both a check-in and a check-out; the \"No check-out\" column counts the rest.",
+      "Hours are counted only for days with both a check-in and a check-out; the \"No check-out\" column counts the rest. " +
+      `Overtime is counted per day — anything past ${OFFICE.hoursPerDay.toFixed(2)} hours on a working day, and every hour worked on a weekend or a holiday. ` +
+      "It is not netted against short days, which is what Difference does.",
   ])
-  summary.mergeCells(note.number, 1, note.number, 14)
+  summary.mergeCells(note.number, 1, note.number, 15)
   note.getCell(1).font = { size: 9, color: { argb: "FF5A6B62" }, italic: true }
   note.getCell(1).alignment = { wrapText: true }
   note.height = 28
@@ -653,11 +687,11 @@ export async function buildAttendanceWorkbook(
   daily.columns = [
     { width: 13 }, { width: 12 }, { width: 14 }, { width: 26 }, { width: 16 },
     { width: 12 }, { width: 12 }, { width: 12 }, { width: 11 }, { width: 13 },
-    { width: 9 },
+    { width: 11 }, { width: 9 },
   ]
   headerRow(daily, [
     "Date", "Day", "Employee code", "Employee name", "Office", "Status",
-    "Check in", "Check out", "Break (min)", "Working hours", "Late",
+    "Check in", "Check out", "Break (min)", "Working hours", "Overtime", "Late",
   ])
 
   // Every working day for every employee in scope, whether or not a punch
@@ -690,15 +724,20 @@ export async function buildAttendanceWorkbook(
         timeInOffice(row?.check_out ?? null, data.zone),
         row?.break_minutes ?? 0,
         worked ?? "",
+        // The day's own overtime, by the same rule the Summary totals: past a
+        // full day when the office was open, every hour when it was not.
+        worked === null ? "" : Math.round((closed ? worked : Math.max(worked - OFFICE.hoursPerDay, 0)) * 100) / 100,
         row?.check_in && minutesInOffice(row.check_in, data.zone) > OFFICE_START_MINUTES ? "Yes" : "",
       ])
       line.getCell(10).numFmt = "0.00"
+      line.getCell(11).numFmt = "0.00"
+      if (Number(line.getCell(11).value) > 0) line.getCell(11).font = { color: { argb: "FF9A6700" }, bold: true }
       if (status === "absent") line.getCell(6).font = { color: { argb: "FFB42318" }, bold: true }
       if (status === "on_leave") line.getCell(6).font = { color: { argb: "FF9A6700" } }
-      if (line.getCell(11).value === "Yes") line.getCell(11).font = { color: { argb: "FF9A6700" } }
+      if (line.getCell(12).value === "Yes") line.getCell(12).font = { color: { argb: "FF9A6700" } }
     }
   }
-  daily.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 11 } }
+  daily.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } }
 
   // ---------------------------------------------------------- Holidays
   const sheet = book.addWorksheet("Holidays")

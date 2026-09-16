@@ -148,6 +148,9 @@ export interface AttendancePreviewRow {
   absent: number
   hours: number
   expectedHours: number
+  /** Past a full day on a working day, and every hour on a closed one. */
+  overtime: number
+  offDayHours: number
   late: number
   missingCheckOut: number
 }
@@ -161,7 +164,7 @@ export interface AttendancePreview {
   officeHours: string
   hoursPerDay: number
   holidays: { date: string; title: string; branch: string | null }[]
-  totals: { leaves: number; hours: number; expectedHours: number; present: number; absent: number }
+  totals: { leaves: number; hours: number; expectedHours: number; overtime: number; present: number; absent: number }
   rows: AttendancePreviewRow[]
 }
 
