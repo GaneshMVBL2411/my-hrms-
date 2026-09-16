@@ -37,7 +37,7 @@ import {
   onTaskCompleted,
 } from "./email/events.js"
 import { buildLetter, LETTER_TITLES, letterFilename, renderLetterPdf, type LetterPayload } from "./letter-pdf.js"
-import { buildAttendanceWorkbook } from "./attendance-report.js"
+import { buildAttendanceWorkbook, endOfMonth } from "./attendance-report.js"
 import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
   loginBlocked,
@@ -551,6 +551,8 @@ app.get("/letters/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
  * narrowed, because a report that silently contains one row is worse than one
  * that says who it is for.
  */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
 app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => {
   const now = new Date()
   const month = Number(req.query.month ?? now.getMonth() + 1)
@@ -569,6 +571,25 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
   }
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     return res.status(400).json({ error: "Invalid year" })
+  }
+
+  // from/to when given, the whole of month/year when not. The month form is
+  // what the phone sends and what older links carry, and it stays exact:
+  // the first of the month to its last day, whatever the length.
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
+  const from = typeof req.query.from === "string" && req.query.from ? req.query.from : monthStart
+  const to = typeof req.query.to === "string" && req.query.to ? req.query.to : endOfMonth(monthStart)
+
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
+    return res.status(400).json({ error: "Dates must be YYYY-MM-DD" })
+  }
+  if (from > to) {
+    return res.status(400).json({ error: "The start date is after the end date" })
+  }
+  // A year and a day. Past that the sheet stops being a sheet someone reads,
+  // and the per-day loop over every employee stops being cheap.
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) {
+    return res.status(400).json({ error: "That range is longer than a year" })
   }
   if (idList.some((n) => !Number.isInteger(n) || n <= 0)) {
     return res.status(400).json({ error: "Invalid employee id" })
@@ -601,7 +622,7 @@ app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => 
     if (!isHr && !ownOnly) {
       return "forbidden" as const
     }
-    return buildAttendanceWorkbook(client, { month, year, employeeIds, departmentId, branchId })
+    return buildAttendanceWorkbook(client, { from, to, employeeIds, departmentId, branchId })
   })
 
   if (report === "forbidden") {

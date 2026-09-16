@@ -99,8 +99,9 @@ export async function listAttendance(params: {
  * second set of numbers to reconcile.
  */
 export async function downloadAttendanceReport(params: {
-  month: number
-  year: number
+  /** Inclusive, YYYY-MM-DD. Any span: a month, a fortnight, one day. */
+  from: string
+  to: string
   /** Empty or omitted means everyone the caller is allowed to see. */
   employeeIds?: number[]
   departmentId?: number | null
@@ -108,14 +109,15 @@ export async function downloadAttendanceReport(params: {
   /** Whose report it is, for the saved file's name. */
   filename?: string
 }): Promise<void> {
-  const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
+  const query = new URLSearchParams({ from: params.from, to: params.to })
   if (params.employeeIds?.length) query.set("employeeIds", params.employeeIds.join(","))
   else if (params.departmentId) query.set("departmentId", String(params.departmentId))
   // A branch narrows whichever of those is in play, so it is set either way.
   if (params.branchId) query.set("branchId", String(params.branchId))
 
   const who = (params.filename ?? "Attendance").replace(/[^A-Za-z0-9]+/g, "_")
-  const name = `Attendance_${who}_${params.year}-${String(params.month).padStart(2, "0")}.xlsx`
+  const period = params.from === params.to ? params.from : `${params.from}_to_${params.to}`
+  const name = `Attendance_${who}_${period}.xlsx`
 
   // Inside the phone app the WebView cannot save a file; the app does it.
   if (requestAppDownload(`/attendance/report.xlsx?${query.toString()}`, name)) return

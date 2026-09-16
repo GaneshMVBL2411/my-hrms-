@@ -4,6 +4,7 @@ import { Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { downloadAttendanceReport } from "@/features/attendance/api"
 import { inAppShell } from "@/lib/appShell"
@@ -14,6 +15,33 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ]
+
+/** "2026-09-16" for a Date, in local time — toISOString would shift the day. */
+function iso(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function monthStart(date: Date): string {
+  return iso(new Date(date.getFullYear(), date.getMonth(), 1))
+}
+
+function monthEnd(date: Date): string {
+  return iso(new Date(date.getFullYear(), date.getMonth() + 1, 0))
+}
+
+/** "August 2026", "10–20 August 2026", "17 August 2026" — the same names the sheet uses. */
+function periodLabel(from: string, to: string): string {
+  if (!from || !to || from > to) return "—"
+  const day = (d: string) => String(Number(d.slice(8, 10)))
+  const month = (d: string) => MONTHS[Number(d.slice(5, 7)) - 1]
+  const year = (d: string) => d.slice(0, 4)
+  if (from === to) return `${day(from)} ${month(from)} ${year(from)}`
+  if (from.slice(0, 7) === to.slice(0, 7)) {
+    const whole = from.slice(8, 10) === "01" && to === monthEnd(new Date(`${from}T00:00:00`))
+    return whole ? `${month(from)} ${year(from)}` : `${day(from)}–${day(to)} ${month(from)} ${year(from)}`
+  }
+  return `${day(from)} ${month(from)} – ${day(to)} ${month(to)} ${year(to)}`
+}
 
 /** "Everything" as a select value — a sentinel, because a Select needs a string. */
 const ALL = "all"
@@ -29,8 +57,10 @@ const ALL = "all"
  */
 export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"; employeeId?: number | null }) {
   const now = new Date()
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
+  // Defaults to this month, which is what most exports are; either end can
+  // then be moved to any day, including onto the other to get a single one.
+  const [from, setFrom] = useState(() => monthStart(now))
+  const [to, setTo] = useState(() => monthEnd(now))
   const [department, setDepartment] = useState<string>(ALL)
   const [branch, setBranch] = useState<string>(ALL)
   const [picked, setPicked] = useState<number[]>([])
@@ -64,12 +94,16 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
   const branchName = branches?.find((b) => b.id === Number(branch))?.name
 
   const download = async () => {
+    if (!from || !to || from > to) {
+      toast.error("Pick a start date on or before the end date")
+      return
+    }
     setBusy(true)
     try {
       if (scope === "mine") {
         await downloadAttendanceReport({
-          month,
-          year,
+          from,
+          to,
           employeeIds: employeeId ? [employeeId] : [],
           filename: "Mine",
         })
@@ -81,8 +115,8 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
               ? `${picked.length}_Employees`
               : departmentName ?? branchName ?? "All_Employees"
         await downloadAttendanceReport({
-          month,
-          year,
+          from,
+          to,
           employeeIds: picked,
           departmentId: department === ALL ? null : Number(department),
           branchId: branch === ALL ? null : Number(branch),
@@ -92,10 +126,9 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
       // In the app the file is saved by the app, which says so itself when it
       // lands. Claiming it here produced the exact bug this fixes: a green
       // "downloaded" and no file anywhere on the phone.
+      const period = periodLabel(from, to)
       toast.success(
-        inAppShell()
-          ? `${MONTHS[month - 1]} ${year} attendance — saving to your phone…`
-          : `${MONTHS[month - 1]} ${year} attendance downloaded`
+        inAppShell() ? `${period} attendance — saving to your phone…` : `${period} attendance downloaded`
       )
     } catch (error) {
       toast.error((error as Error).message || "Could not build the report")
@@ -108,35 +141,53 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
     <Card className="rounded-xl border shadow-xs">
       <CardContent className="flex flex-wrap items-end gap-3 py-4">
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Month</span>
-          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-            <SelectTrigger className="w-36 rounded-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTHS.map((m, i) => (
-                <SelectItem key={m} value={String(i + 1)}>
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <span className="text-xs text-muted-foreground">From</span>
+          <Input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+            className="w-40 rounded-md"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Year</span>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-28 rounded-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <span className="text-xs text-muted-foreground">To</span>
+          <Input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+            className="w-40 rounded-md"
+          />
+        </div>
+
+        {/* The whole-month case is most of them, so it stays one tap. */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">Quick</span>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              className="rounded-md"
+              onClick={() => {
+                setFrom(monthStart(now))
+                setTo(monthEnd(now))
+              }}
+            >
+              This month
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-md"
+              onClick={() => {
+                const last = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                setFrom(monthStart(last))
+                setTo(monthEnd(last))
+              }}
+            >
+              Last month
+            </Button>
+          </div>
         </div>
 
         {scope === "team" && (
@@ -202,7 +253,8 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
         </Button>
 
         <p className="w-full text-xs text-muted-foreground sm:w-auto sm:flex-1 sm:text-right">
-          Summary, day by day, and the month's holidays — office hours 09:30 AM to 06:30 PM.
+          <span className="font-medium text-foreground">{periodLabel(from, to)}</span> — summary, day by day, and
+          the holidays in it. Office hours 09:30 AM to 06:30 PM.
           {scope === "team" && " Pick an office, a department, any number of people — or leave it on all."}
         </p>
       </CardContent>

@@ -3,7 +3,7 @@ import type { PoolClient } from "pg"
 import { loadCompanyHeader, MONTHS, type CompanyHeader } from "./payslip-pdf.js"
 
 /**
- * The month's attendance, as a workbook HR can open in Excel.
+ * A period's attendance, as a workbook HR can open in Excel.
  *
  * Three questions are asked of this report and it answers all three from one
  * query: how did one person do, how did everyone do side by side, and what
@@ -77,8 +77,9 @@ interface HolidayRow {
 }
 
 export interface ReportScope {
-  month: number
-  year: number
+  /** Inclusive, as YYYY-MM-DD. A single day is from === to. */
+  from: string
+  to: string
   /**
    * Who the report covers. Both null means the whole company; either one set
    * narrows it, and `employeeIds` wins where both are given — a named list is
@@ -112,7 +113,7 @@ interface ReportData {
  * the difference between "1 September" and "31 August" in every total below.
  */
 async function loadReport(client: PoolClient, scope: ReportScope): Promise<ReportData> {
-  const first = `${scope.year}-${String(scope.month).padStart(2, "0")}-01`
+  const { from, to } = scope
 
   // Row level security narrows all of this to the caller's company, and to
   // the caller themselves when they are not HR, so the only filtering here is
@@ -157,10 +158,10 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
   const attendance = await client.query<AttendanceRow>(
     `select a.employee_id, a.date::text, a.check_in, a.check_out, a.break_minutes, a.status::text
        from public.attendance_records a
-      where a.date >= $1::date and a.date < ($1::date + interval '1 month')
-        and a.employee_id = any($2::int[])
+      where a.date >= $1::date and a.date <= $2::date
+        and a.employee_id = any($3::int[])
       order by a.date, a.employee_id`,
-    [first, ids]
+    [from, to, ids]
   )
 
   const leaves = await client.query<LeaveRow>(
@@ -168,10 +169,10 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
        from public.leave_requests r
        left join public.leave_types t on t.id = r.leave_type_id
       where r.status = 'approved'
-        and r.start_date < ($1::date + interval '1 month')
+        and r.start_date <= $2::date
         and r.end_date >= $1::date
-        and r.employee_id = any($2::int[])`,
-    [first, ids]
+        and r.employee_id = any($3::int[])`,
+    [from, to, ids]
   )
 
   // A holiday with no branch belongs to the whole company; one with a branch
@@ -182,10 +183,10 @@ async function loadReport(client: PoolClient, scope: ReportScope): Promise<Repor
        from public.company_events c
        left join public.branches b on b.id = c.branch_id
       where c.event_type = 'holiday'
-        and c.event_date >= $1::date and c.event_date < ($1::date + interval '1 month')
-        and (c.branch_id is null or $2::int is null or c.branch_id = $2::int)
+        and c.event_date >= $1::date and c.event_date <= $2::date
+        and (c.branch_id is null or $3::int is null or c.branch_id = $3::int)
       order by c.event_date`,
-    [first, scope.branchId]
+    [from, to, scope.branchId]
   )
 
   const zone = await client
@@ -235,10 +236,53 @@ function iso(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
-/** Every date in the month, as text, in order. */
-function datesInMonth(month: number, year: number): string[] {
-  const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
-  return Array.from({ length: days }, (_, i) => `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`)
+/** Every date from one to the other, inclusive, as text, in order. */
+function datesBetween(from: string, to: string): string[] {
+  const out: string[] = []
+  for (const d = asDate(from); iso(d) <= to.slice(0, 10); d.setUTCDate(d.getUTCDate() + 1)) {
+    out.push(iso(d))
+    // A range someone typed backwards, or a year of it, is not worth looping
+    // over; the route caps this too, and this is the second line of defence.
+    if (out.length > 400) break
+  }
+  return out
+}
+
+/** The last day of the month a date falls in. */
+export function endOfMonth(date: string): string {
+  const d = asDate(date)
+  return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)))
+}
+
+/**
+ * What to call this period, in the title and on the sheet.
+ *
+ * A whole calendar month is still "September 2026", because that is what it
+ * is and a reader should not have to parse two dates to see it. Anything
+ * else says exactly which days it covers, since a report over half a month
+ * that looked like a whole one would be read as the whole one.
+ */
+function periodLabel(from: string, to: string): string {
+  const day = (d: string) => String(Number(d.slice(8, 10)))
+  const monthName = (d: string) => MONTHS[Number(d.slice(5, 7)) - 1] ?? d.slice(5, 7)
+  const year = (d: string) => d.slice(0, 4)
+
+  if (from === to) return `${day(from)} ${monthName(from)} ${year(from)}`
+  if (from.slice(8, 10) === "01" && to === endOfMonth(from) && from.slice(0, 7) === to.slice(0, 7)) {
+    return `${monthName(from)} ${year(from)}`
+  }
+  if (from.slice(0, 7) === to.slice(0, 7)) {
+    return `${day(from)}–${day(to)} ${monthName(from)} ${year(from)}`
+  }
+  return `${day(from)} ${monthName(from)} ${year(from)} – ${day(to)} ${monthName(to)} ${year(to)}`
+}
+
+/** The same distinction, for a file name. */
+function periodSlug(from: string, to: string): string {
+  if (from.slice(8, 10) === "01" && to === endOfMonth(from) && from.slice(0, 7) === to.slice(0, 7)) {
+    return `${MONTHS[Number(from.slice(5, 7)) - 1] ?? ""}_${from.slice(0, 4)}`
+  }
+  return from === to ? from : `${from}_to_${to}`
 }
 
 function isWeekend(date: string): boolean {
@@ -319,8 +363,8 @@ function totalsFor(
   const byDate = new Map(rows.map((r) => [r.date.slice(0, 10), r]))
   const onLeave = leaveDates(data.leaves, employee.id, month)
 
-  // Someone who joined mid-month is not absent for the days before they
-  // joined, and their expected hours should not include them either.
+  // Someone who joined part-way through is not absent for the days before
+  // they joined, and their expected hours should not include them either.
   const joined = employee.joining_date?.slice(0, 10) ?? null
   const countable = workingDays.filter((d) => !joined || d >= joined)
 
@@ -338,7 +382,7 @@ function totalsFor(
     else if (row && row.status !== "absent") present++
   }
 
-  // Hours and punctuality are counted from every record in the month, not
+  // Hours and punctuality are counted from every record in the period, not
   // only the working days: someone who came in on a Saturday worked those
   // hours, and the sheet would be wrong to drop them.
   for (const row of rows) {
@@ -397,7 +441,7 @@ function headerRow(sheet: ExcelJS.Worksheet, labels: string[]): void {
 }
 
 export function reportFilename(scope: ReportScope, who: string): string {
-  const period = `${MONTHS[scope.month - 1] ?? scope.month}_${scope.year}`
+  const period = periodSlug(scope.from, scope.to)
   return `Attendance_${who.replace(/[^A-Za-z0-9]+/g, "_")}_${period}.xlsx`
 }
 
@@ -414,10 +458,10 @@ export async function buildAttendanceWorkbook(
   const data = await loadReport(client, scope)
   if (data.employees.length === 0) return null
 
-  const month = datesInMonth(scope.month, scope.year)
+  const month = datesBetween(scope.from, scope.to)
   const holidayDates = new Set(data.holidays.map((h) => h.event_date.slice(0, 10)))
   const workingDays = month.filter((d) => !isWeekend(d) && !holidayDates.has(d))
-  const period = `${MONTHS[scope.month - 1] ?? scope.month} ${scope.year}`
+  const period = periodLabel(scope.from, scope.to)
 
   // What to call this report, on the sheet and in the file name. A list of
   // one is still a list as far as the query is concerned, but to whoever
@@ -471,10 +515,10 @@ export async function buildAttendanceWorkbook(
   summary.addRow([])
 
   // The four figures the report exists to give, before any detail.
-  titleRow(summary, "Month at a glance", 14, 12)
+  titleRow(summary, "At a glance", 14, 12)
   labelRow(summary, "1. Total working days", workingDays.length, 4)
   labelRow(summary, "2. Total leaves", single ? sum((t) => t.leaves) : `${sum((t) => t.leaves)} day(s) across ${data.employees.length} employees`, 4)
-  labelRow(summary, "3. Festival holidays", data.holidays.length === 0 ? "0 — none recorded for this month" : `${data.holidays.length} (see Holidays sheet)`, 4)
+  labelRow(summary, "3. Festival holidays", data.holidays.length === 0 ? "0 — none recorded in this period" : `${data.holidays.length} (see Holidays sheet)`, 4)
   labelRow(summary, "4. Total working hours", `${sum((t) => t.hours).toFixed(2)} of ${sum((t) => t.expectedHours).toFixed(2)} expected`, 4)
   summary.addRow([])
 
@@ -528,7 +572,7 @@ export async function buildAttendanceWorkbook(
 
   summary.addRow([])
   const note = summary.addRow([
-    "Working days exclude weekends and the holidays listed on the Holidays sheet, and start from a joining date that falls inside the month. " +
+    "Working days exclude weekends and the holidays listed on the Holidays sheet, and start from a joining date that falls inside the period. " +
       "Hours are counted only for days with both a check-in and a check-out; the \"No check-out\" column counts the rest.",
   ])
   summary.mergeCells(note.number, 1, note.number, 14)
@@ -593,7 +637,7 @@ export async function buildAttendanceWorkbook(
   sheet.columns = [{ width: 13 }, { width: 12 }, { width: 34 }, { width: 18 }, { width: 40 }]
   headerRow(sheet, ["Date", "Day", "Festival / Holiday", "Office", "Notes"])
   if (data.holidays.length === 0) {
-    const row = sheet.addRow(["No festival holidays are recorded for this month."])
+    const row = sheet.addRow(["No festival holidays are recorded in this period."])
     sheet.mergeCells(row.number, 1, row.number, 5)
     row.getCell(1).font = { italic: true, color: { argb: "FF5A6B62" } }
     const how = sheet.addRow(["Add them in the portal under Calendar, as events of type \"holiday\"; they are then excluded from working days here."])
