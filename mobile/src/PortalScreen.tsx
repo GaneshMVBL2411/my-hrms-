@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Alert, BackHandler, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { WebView } from "react-native-webview"
-import { getToken, PORTAL_URL } from "./api"
+import { apiFile, getToken, PORTAL_URL } from "./api"
+import { PDF, saveFile, toBase64, XLSX } from "./download"
 import { scale, FONT_SCALE_CAP } from "./ui"
 import { useStyles, useTheme, type Palette, type ThemeMode } from "./theme"
 
@@ -59,6 +60,38 @@ function themeScript(mode: ThemeMode): string {
       } catch (e) {}
     })();
   `
+}
+
+
+/**
+ * A download the portal asked the app to do for it.
+ *
+ * A WebView cannot save a file: the portal's blob URL and `<a download>` are
+ * both ignored, silently, so every download there looked like it worked and
+ * produced nothing. The page now posts the path instead and this fetches it
+ * with the app's own token and writes it where the phone can find it.
+ *
+ * Only a path is accepted, and it is re-based onto the app's own API address
+ * — a page that sent a full URL could otherwise point the app's credentials
+ * at a host of its choosing.
+ */
+async function downloadForPortal(raw: string): Promise<void> {
+  let message: { type?: string; path?: string; filename?: string }
+  try {
+    message = JSON.parse(raw)
+  } catch {
+    return
+  }
+  if (message.type !== "download" || typeof message.path !== "string") return
+  if (!message.path.startsWith("/") || message.path.startsWith("//")) return
+
+  const name = (message.filename || "download").replace(/[^A-Za-z0-9._-]+/g, "_")
+  try {
+    const bytes = await apiFile(message.path)
+    await saveFile(toBase64(bytes), name, name.toLowerCase().endsWith(".xlsx") ? XLSX : PDF)
+  } catch (error) {
+    Alert.alert("Not downloaded", (error as Error).message || "That file could not be saved.")
+  }
 }
 
 export function PortalScreen({ active, userId }: { active: boolean; userId: number }) {
@@ -191,6 +224,9 @@ export function PortalScreen({ active, userId }: { active: boolean; userId: numb
          */
         userAgent="HRMSMobile/1.0"
         injectedJavaScriptBeforeContentLoaded={injectSession}
+        onMessage={(event: { nativeEvent: { data: string } }) => {
+          void downloadForPortal(event.nativeEvent.data)
+        }}
         onNavigationStateChange={(nav: { canGoBack: boolean }) => setCanGoBack(nav.canGoBack)}
         onError={() => setFailed(true)}
         onHttpError={(e: { nativeEvent: { url: string } }) => {

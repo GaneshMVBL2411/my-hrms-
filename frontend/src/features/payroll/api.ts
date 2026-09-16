@@ -1,4 +1,5 @@
 import { fetchApiBlob, supabase } from "@/lib/supabase"
+import { requestAppDownload } from "@/lib/appShell"
 import { unwrap, ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { pageRange } from "@/lib/query"
@@ -155,6 +156,8 @@ export function payslipFilename(p: Pick<Payslip, "employeeCode" | "month" | "yea
  * disagree. RLS decides who may have it — an employee their own, HR anyone's.
  */
 export async function downloadPayslipPdf(p: Pick<Payslip, "id" | "employeeCode" | "month" | "year">): Promise<void> {
+  if (requestAppDownload(`/payslips/${p.id}/pdf`, payslipFilename(p))) return
+
   const blob = await fetchApiBlob(`/payslips/${p.id}/pdf`)
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")

@@ -247,6 +247,14 @@ export const letterPdf = (id: number) => fetchPdf(`/letters/${id}/pdf`, "This le
  * come back over the same authenticated fetch as everything else and go
  * straight to a file the phone can open.
  */
+/**
+ * Any file the API serves, by path — for the portal's download bridge, which
+ * knows the path it wants and nothing about tokens or hosts.
+ */
+export function apiFile(path: string): Promise<ArrayBuffer> {
+  return fetchPdf(path.startsWith("/") ? path : `/${path}`, "That file is not available to you.")
+}
+
 export function attendanceReportXlsx(params: { month: number; year: number; everyone: boolean; employeeId?: number | null }) {
   const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
   if (!params.everyone && params.employeeId) query.set("employeeIds", String(params.employeeId))

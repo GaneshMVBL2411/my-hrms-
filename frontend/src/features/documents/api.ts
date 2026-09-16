@@ -1,4 +1,5 @@
 import { fetchApiBlob, supabase } from "@/lib/supabase"
+import { requestAppDownload } from "@/lib/appShell"
 import { unwrap, unwrapVoid } from "@/lib/errors"
 import { definedOnly } from "@/lib/case"
 import type {
@@ -71,6 +72,8 @@ export async function viewLetter(id: number): Promise<LetterPayload> {
  * screenshot of the dialog. `get_letter_view` decides who may have it.
  */
 export async function downloadLetterPdf(id: number, filename: string): Promise<void> {
+  if (requestAppDownload(`/letters/${id}/pdf`, filename)) return
+
   const blob = await fetchApiBlob(`/letters/${id}/pdf`)
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")

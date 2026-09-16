@@ -1,4 +1,5 @@
 import { supabase, apiRequest, fetchApiBlob } from "@/lib/supabase"
+import { requestAppDownload } from "@/lib/appShell"
 import { unwrap, ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { pageRange } from "@/lib/query"
@@ -113,12 +114,17 @@ export async function downloadAttendanceReport(params: {
   // A branch narrows whichever of those is in play, so it is set either way.
   if (params.branchId) query.set("branchId", String(params.branchId))
 
+  const who = (params.filename ?? "Attendance").replace(/[^A-Za-z0-9]+/g, "_")
+  const name = `Attendance_${who}_${params.year}-${String(params.month).padStart(2, "0")}.xlsx`
+
+  // Inside the phone app the WebView cannot save a file; the app does it.
+  if (requestAppDownload(`/attendance/report.xlsx?${query.toString()}`, name)) return
+
   const blob = await fetchApiBlob(`/attendance/report.xlsx?${query.toString()}`)
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  const who = (params.filename ?? "Attendance").replace(/[^A-Za-z0-9]+/g, "_")
-  a.download = `Attendance_${who}_${params.year}-${String(params.month).padStart(2, "0")}.xlsx`
+  a.download = name
   document.body.appendChild(a)
   a.click()
   a.remove()

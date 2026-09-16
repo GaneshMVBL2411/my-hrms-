@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { downloadAttendanceReport } from "@/features/attendance/api"
+import { inAppShell } from "@/lib/appShell"
 import { EmployeePicker } from "@/features/attendance/EmployeePicker"
 import { listBranches, listDepartments, listEmployees } from "@/features/employees/api"
 
@@ -88,7 +89,14 @@ export function AttendanceExport({ scope, employeeId }: { scope: "mine" | "team"
           filename: [name, branchName && name !== branchName ? branchName : null].filter(Boolean).join("_"),
         })
       }
-      toast.success(`${MONTHS[month - 1]} ${year} attendance downloaded`)
+      // In the app the file is saved by the app, which says so itself when it
+      // lands. Claiming it here produced the exact bug this fixes: a green
+      // "downloaded" and no file anywhere on the phone.
+      toast.success(
+        inAppShell()
+          ? `${MONTHS[month - 1]} ${year} attendance — saving to your phone…`
+          : `${MONTHS[month - 1]} ${year} attendance downloaded`
+      )
     } catch (error) {
       toast.error((error as Error).message || "Could not build the report")
     } finally {
