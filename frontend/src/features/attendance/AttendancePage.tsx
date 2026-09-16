@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getMyAttendance, getSummary, listAttendance } from "@/features/attendance/api"
+import { AttendanceExport } from "@/features/attendance/AttendanceExport"
 import { BiometricPunch } from "@/features/attendance/BiometricPunch"
 import { useAuth } from "@/features/auth/AuthContext"
 import type { AttendanceStatus } from "@/features/attendance/types"
@@ -192,6 +193,7 @@ export function AttendancePage() {
         </TabsList>
 
         <TabsContent value="mine" className="mt-4 flex flex-col gap-4">
+          <AttendanceExport scope="mine" employeeId={user?.employeeId ?? null} />
           <Card className="rounded-xl border shadow-xs interactive-card">
             <CardContent className="flex flex-col items-start justify-between gap-4 py-5 sm:flex-row sm:items-center">
               <div>
@@ -302,6 +304,8 @@ export function AttendancePage() {
 
         {isManager && (
           <TabsContent value="team" className="mt-4 flex flex-col gap-4">
+            <AttendanceExport scope="team" />
+
             <div className="flex flex-wrap items-center gap-4">
               <Input
                 type="date"

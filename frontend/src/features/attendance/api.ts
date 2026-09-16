@@ -1,4 +1,4 @@
-import { supabase, apiRequest } from "@/lib/supabase"
+import { supabase, apiRequest, fetchApiBlob } from "@/lib/supabase"
 import { unwrap, ApiError } from "@/lib/errors"
 import { toCamel } from "@/lib/case"
 import { pageRange } from "@/lib/query"
@@ -86,4 +86,36 @@ export async function listAttendance(params: {
     page: params.page,
     pageSize: params.pageSize,
   }
+}
+
+/**
+ * Saves the month's attendance as an Excel workbook.
+ *
+ * `employeeId` scopes it to one person; without it the workbook covers the
+ * whole company, which the server allows only for HR. Built there rather than
+ * here because the totals — working days, leaves, holidays, hours — are the
+ * report, and a second implementation of them in the browser would be a
+ * second set of numbers to reconcile.
+ */
+export async function downloadAttendanceReport(params: {
+  month: number
+  year: number
+  employeeId?: number | null
+  /** Whose report it is, for the saved file's name. */
+  filename?: string
+}): Promise<void> {
+  const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
+  if (params.employeeId) query.set("employeeId", String(params.employeeId))
+
+  const blob = await fetchApiBlob(`/attendance/report.xlsx?${query.toString()}`)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  const who = (params.filename ?? (params.employeeId ? "Employee" : "All_Employees")).replace(/[^A-Za-z0-9]+/g, "_")
+  a.download = `Attendance_${who}_${params.year}-${String(params.month).padStart(2, "0")}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked on the next tick: revoking synchronously races the click in Safari.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

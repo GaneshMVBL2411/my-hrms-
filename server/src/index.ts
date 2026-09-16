@@ -37,6 +37,7 @@ import {
   onTaskCompleted,
 } from "./email/events.js"
 import { buildLetter, LETTER_TITLES, letterFilename, renderLetterPdf, type LetterPayload } from "./letter-pdf.js"
+import { buildAttendanceWorkbook } from "./attendance-report.js"
 import { loadCompanyHeader, loadPayslip, payslipFilename, payslipPeriod, renderPayslipPdf, type PayslipRow } from "./payslip-pdf.js"
 import {
   loginBlocked,
@@ -539,6 +540,52 @@ app.get("/letters/:id/pdf", requireAuth, apiLimiter, async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff")
   res.setHeader("Cache-Control", "private, no-store")
   res.send(pdf)
+})
+
+/**
+ * The month's attendance as an Excel workbook.
+ *
+ * `employeeId` scopes it to one person; without it the workbook covers the
+ * whole company — one summary row each, plus every day. Anyone may pull their
+ * own; the company-wide report is HR's, and is refused rather than quietly
+ * narrowed, because a report that silently contains one row is worse than one
+ * that says who it is for.
+ */
+app.get("/attendance/report.xlsx", requireAuth, apiLimiter, async (req, res) => {
+  const now = new Date()
+  const month = Number(req.query.month ?? now.getMonth() + 1)
+  const year = Number(req.query.year ?? now.getFullYear())
+  const employeeId = req.query.employeeId === undefined ? null : Number(req.query.employeeId)
+
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: "Invalid month" })
+  }
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return res.status(400).json({ error: "Invalid year" })
+  }
+  if (employeeId !== null && (!Number.isInteger(employeeId) || employeeId <= 0)) {
+    return res.status(400).json({ error: "Invalid employee id" })
+  }
+
+  const report = await withSession(req.user!, async (client) => {
+    const { rows } = await client.query<{ is_hr: boolean }>("select public.app_is_hr() as is_hr")
+    const isHr = rows[0]?.is_hr === true
+    if (!isHr && employeeId !== req.user!.employeeId) {
+      return "forbidden" as const
+    }
+    return buildAttendanceWorkbook(client, { month, year, employeeId })
+  })
+
+  if (report === "forbidden") {
+    return res.status(403).json({ error: "Only HR can export attendance for the whole company" })
+  }
+  if (!report) return res.status(404).json({ error: "No employees to report on" })
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  res.setHeader("Content-Disposition", `attachment; filename="${report.filename}"`)
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  res.setHeader("Cache-Control", "private, no-store")
+  res.send(report.buffer)
 })
 
 app.get("/rest/:table", requireAuth, apiLimiter, async (req, res) => {
