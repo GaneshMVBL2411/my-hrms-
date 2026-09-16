@@ -74,7 +74,8 @@
         }
       ],
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "//": "The HRMS API. In development only the PORT and PATH here are used:",

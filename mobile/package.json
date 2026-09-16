@@ -16,6 +16,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@noble/ed25519": "^2.2.3",
     "@noble/hashes": "^2.4.0",
+    "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~57.0.21",
     "expo-asset": "~57.0.16",
     "expo-audio": "~57.0.4",

@@ -255,8 +255,14 @@ export function apiFile(path: string): Promise<ArrayBuffer> {
   return fetchPdf(path.startsWith("/") ? path : `/${path}`, "That file is not available to you.")
 }
 
-export function attendanceReportXlsx(params: { month: number; year: number; everyone: boolean; employeeId?: number | null }) {
-  const query = new URLSearchParams({ month: String(params.month), year: String(params.year) })
+export function attendanceReportXlsx(params: {
+  /** Inclusive, YYYY-MM-DD. A single day is from === to. */
+  from: string
+  to: string
+  everyone: boolean
+  employeeId?: number | null
+}) {
+  const query = new URLSearchParams({ from: params.from, to: params.to })
   if (!params.everyone && params.employeeId) query.set("employeeIds", String(params.employeeId))
   return fetchPdf(`/attendance/report.xlsx?${query.toString()}`, "That report is not available to you.")
 }
