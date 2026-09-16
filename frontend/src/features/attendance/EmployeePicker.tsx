@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -15,6 +16,11 @@ import type { EmployeeSummary } from "@/features/employees/types"
  *
  * Nothing ticked means everyone, which is both the common case and the safe
  * default — an empty selection producing an empty report would be a trap.
+ *
+ * It closes on an explicit Done rather than on the first tick, because the
+ * whole point is picking several. That button is not decoration: on a phone
+ * the list covers the form, there is no "click outside" worth the name, and
+ * without it people were left staring at the list with no way back.
  */
 export function EmployeePicker({
   employees,
@@ -34,12 +40,14 @@ export function EmployeePicker({
         ? employees.find((e) => e.id === selected[0])?.fullName ?? "1 employee"
         : `${selected.length} employees`
 
+  const [open, setOpen] = useState(false)
+
   const toggle = (id: number) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
 
   return (
     <div className="flex items-center gap-1">
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -57,7 +65,13 @@ export function EmployeePicker({
             <CommandList>
               <CommandEmpty>No one matches that.</CommandEmpty>
               <CommandGroup>
-                <CommandItem onSelect={() => onChange([])} className="gap-2">
+                <CommandItem
+                  onSelect={() => {
+                    onChange([])
+                    setOpen(false)
+                  }}
+                  className="gap-2"
+                >
                   <Check className={selected.length === 0 ? "size-4 opacity-100" : "size-4 opacity-0"} />
                   <span className="font-medium">All employees</span>
                 </CommandItem>
@@ -87,6 +101,23 @@ export function EmployeePicker({
               </CommandGroup>
             </CommandList>
           </Command>
+
+          {/* Outside the CommandList, so it stays put while the list scrolls. */}
+          <div className="flex items-center justify-between gap-2 border-t border-border p-2">
+            <span className="pl-1 text-xs text-muted-foreground">
+              {selected.length === 0 ? "Everyone" : `${selected.length} selected`}
+            </span>
+            <div className="flex gap-1">
+              {selected.length > 0 && (
+                <Button variant="ghost" size="sm" className="h-8 rounded-md" onClick={() => onChange([])}>
+                  Clear
+                </Button>
+              )}
+              <Button size="sm" className="h-8 rounded-md" onClick={() => setOpen(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
         </PopoverContent>
       </Popover>
 
